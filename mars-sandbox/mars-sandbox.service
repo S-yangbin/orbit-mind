@@ -1,0 +1,26 @@
+[Unit]
+Description=Mars Sandbox - Home Agent WebSocket Gateway
+After=network.target mysql.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/mars-sandbox
+Environment="PATH=/opt/mars-sandbox/venv/bin"
+ExecStart=/opt/mars-sandbox/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8888 --ws websockets
+Restart=always
+RestartSec=5
+
+# 日志
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mars-sandbox
+
+# 安全限制
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/mars-sandbox
+
+[Install]
+WantedBy=multi-user.target

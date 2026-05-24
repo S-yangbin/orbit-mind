@@ -23,6 +23,7 @@ class MNSConfig:
 @dataclass
 class AgentConfig:
     """Agent 运行配置"""
+    node_id: str = ""  # 节点标识，默认自动生成为 hostname
     max_timeout: int = 120
     allowed_commands: List[str] = field(default_factory=list)
     blocked_commands: List[str] = field(default_factory=lambda: [
@@ -35,6 +36,13 @@ class AgentConfig:
     working_dir: str = os.path.expanduser("~")
     log_file: Optional[str] = None
     audit_log_dir: Optional[str] = None  # 审计日志目录，None 则默认 ~/orbit-mind/logs/
+    
+    # WebSocket 配置
+    mars_sandbox_url: str = "ws://localhost:8888"  # mars-sandbox WebSocket 地址
+    node_secret: str = ""  # 节点密钥（用于 WebSocket 连接认证）
+    heartbeat_interval: int = 60  # 心跳间隔（秒）
+    reconnect_delay: int = 5  # 重连延迟（秒）
+    max_reconnect_attempts: int = 0  # 最大重连次数，0 表示无限重试
 
 
 @dataclass
@@ -78,6 +86,7 @@ def load_config(config_path: Optional[str] = None) -> Config:
 
         agent_data = data.get("agent", {})
         if agent_data:
+            config.agent.node_id = agent_data.get("node_id", config.agent.node_id)
             config.agent.max_timeout = agent_data.get("max_timeout", config.agent.max_timeout)
             config.agent.allowed_commands = agent_data.get("allowed_commands", config.agent.allowed_commands)
             if "blocked_commands" in agent_data:
@@ -88,12 +97,25 @@ def load_config(config_path: Optional[str] = None) -> Config:
             config.agent.log_file = agent_data.get("log_file", config.agent.log_file)
             if "audit_log_dir" in agent_data:
                 config.agent.audit_log_dir = os.path.expanduser(agent_data["audit_log_dir"])
+            
+            # WebSocket 配置
+            if "mars_sandbox_url" in agent_data:
+                config.agent.mars_sandbox_url = agent_data["mars_sandbox_url"]
+            if "node_secret" in agent_data:
+                config.agent.node_secret = agent_data["node_secret"]
+            config.agent.heartbeat_interval = agent_data.get("heartbeat_interval", config.agent.heartbeat_interval)
+            config.agent.reconnect_delay = agent_data.get("reconnect_delay", config.agent.reconnect_delay)
+            config.agent.max_reconnect_attempts = agent_data.get("max_reconnect_attempts", config.agent.max_reconnect_attempts)
 
-    # 环境变量覆盖
-    config.mns.endpoint = os.environ.get("MNS_ENDPOINT", config.mns.endpoint)
-    config.mns.access_key_id = os.environ.get("ALIBABA_CLOUD_ACCESS_KEY_ID", config.mns.access_key_id)
-    config.mns.access_key_secret = os.environ.get("ALIBABA_CLOUD_ACCESS_KEY_SECRET", config.mns.access_key_secret)
-    config.mns.queue_name = os.environ.get("MNS_QUEUE_NAME", config.mns.queue_name)
+    # 环境变量覆盖 (WebSocket 架构)
+    config.agent.node_id = os.environ.get("HOME_AGENT_NODE_ID", config.agent.node_id)
+    config.agent.mars_sandbox_url = os.environ.get("MARS_SANDBOX_URL", config.agent.mars_sandbox_url)
+    config.agent.node_secret = os.environ.get("HOME_AGENT_NODE_SECRET", config.agent.node_secret)
+
+    # 自动生成 node_id（如果未配置）
+    if not config.agent.node_id:
+        import socket
+        config.agent.node_id = socket.gethostname()
 
     return config
 
@@ -101,14 +123,10 @@ def load_config(config_path: Optional[str] = None) -> Config:
 def validate_config(config: Config) -> List[str]:
     """验证配置完整性，返回错误信息列表"""
     errors = []
-    if not config.mns.endpoint:
-        errors.append("MNS endpoint 未配置 (MNS_ENDPOINT)")
-    if not config.mns.access_key_id:
-        errors.append("AccessKey ID 未配置 (ALIBABA_CLOUD_ACCESS_KEY_ID)")
-    if not config.mns.access_key_secret:
-        errors.append("AccessKey Secret 未配置 (ALIBABA_CLOUD_ACCESS_KEY_SECRET)")
-    if not config.mns.queue_name:
-        errors.append("MNS 队列名称未配置 (MNS_QUEUE_NAME)")
+    if not config.agent.mars_sandbox_url:
+        errors.append("mars-sandbox URL 未配置 (MARS_SANDBOX_URL)")
+    if not config.agent.node_secret:
+        errors.append("节点密钥未配置 (HOME_AGENT_NODE_SECRET)")
     if config.agent.working_dir and not Path(config.agent.working_dir).exists():
         errors.append(f"工作目录不存在: {config.agent.working_dir}")
     return errors

@@ -1,6 +1,6 @@
 """
-消息协议定义 - 家庭 AI 中枢系统
-定义命令消息和响应消息的标准格式
+消息协议定义 - 家庭 AI 中枢系统 (WebSocket 架构)
+定义节点注册、心跳、命令和响应消息的标准格式
 """
 
 from dataclasses import dataclass, asdict
@@ -11,12 +11,97 @@ import uuid
 
 
 @dataclass
+class RegisterMessage:
+    """节点注册消息 (home-agent → mars-sandbox)"""
+    type: str = "register"
+    node_id: str = None
+    hostname: str = None
+    ip: str = None
+    platform: str = None
+    version: str = "1.0.0"
+    timestamp: str = None
+    
+    def __post_init__(self):
+        if self.timestamp is None:
+            self.timestamp = datetime.now(timezone.utc).isoformat()
+    
+    def to_json(self) -> str:
+        return json.dumps(asdict(self), ensure_ascii=False)
+    
+    @classmethod
+    def from_dict(cls, data: dict) -> 'RegisterMessage':
+        return cls(**data)
+
+
+@dataclass
+class RegisterAckMessage:
+    """注册确认消息 (mars-sandbox → home-agent)"""
+    type: str = "register_ack"
+    status: str = "success"
+    message: str = "注册成功"
+    server_time: str = None
+    
+    def __post_init__(self):
+        if self.server_time is None:
+            self.server_time = datetime.now(timezone.utc).isoformat()
+    
+    def to_json(self) -> str:
+        return json.dumps(asdict(self), ensure_ascii=False)
+    
+    @classmethod
+    def from_dict(cls, data: dict) -> 'RegisterAckMessage':
+        return cls(**data)
+
+
+@dataclass
+class HeartbeatMessage:
+    """心跳消息 (home-agent → mars-sandbox)"""
+    type: str = "heartbeat"
+    node_id: str = None
+    uptime_seconds: int = 0
+    cpu_usage: float = 0.0
+    memory_usage: float = 0.0
+    timestamp: str = None
+    
+    def __post_init__(self):
+        if self.timestamp is None:
+            self.timestamp = datetime.now(timezone.utc).isoformat()
+    
+    def to_json(self) -> str:
+        return json.dumps(asdict(self), ensure_ascii=False)
+    
+    @classmethod
+    def from_dict(cls, data: dict) -> 'HeartbeatMessage':
+        return cls(**data)
+
+
+@dataclass
+class HeartbeatAckMessage:
+    """心跳确认消息 (mars-sandbox → home-agent)"""
+    type: str = "heartbeat_ack"
+    status: str = "ok"
+    server_time: str = None
+    
+    def __post_init__(self):
+        if self.server_time is None:
+            self.server_time = datetime.now(timezone.utc).isoformat()
+    
+    def to_json(self) -> str:
+        return json.dumps(asdict(self), ensure_ascii=False)
+    
+    @classmethod
+    def from_dict(cls, data: dict) -> 'HeartbeatAckMessage':
+        return cls(**data)
+
+
+@dataclass
 class CommandMessage:
-    """命令消息（Hermes -> Home Agent）"""
+    """命令消息 (mars-sandbox → home-agent)"""
     command: str
     request_id: str = None
     type: str = "command"
     timeout: int = 30  # 命令执行超时时间（秒）
+    source: str = "hermes"
     created_at: str = None
     
     def __post_init__(self):
@@ -47,18 +132,18 @@ class CommandMessage:
 
 @dataclass
 class ResultMessage:
-    """响应消息（Home Agent -> Hermes）"""
+    """响应消息 (home-agent → mars-sandbox)"""
     request_id: str
     exit_code: int
     stdout: str = ""
     stderr: str = ""
     type: str = "result"
     duration_ms: int = 0
-    created_at: str = None
+    timestamp: str = None
     
     def __post_init__(self):
-        if self.created_at is None:
-            self.created_at = datetime.now(timezone.utc).isoformat()
+        if self.timestamp is None:
+            self.timestamp = datetime.now(timezone.utc).isoformat()
     
     def to_json(self) -> str:
         """序列化为 JSON 字符串"""
@@ -77,6 +162,27 @@ class ResultMessage:
     @classmethod
     def from_dict(cls, data: dict) -> 'ResultMessage':
         """从字典创建"""
+        return cls(**data)
+
+
+@dataclass
+class ErrorMessage:
+    """错误消息 (双向)"""
+    error_code: str
+    message: str
+    request_id: str = None
+    type: str = "error"
+    timestamp: str = None
+    
+    def __post_init__(self):
+        if self.timestamp is None:
+            self.timestamp = datetime.now(timezone.utc).isoformat()
+    
+    def to_json(self) -> str:
+        return json.dumps(asdict(self), ensure_ascii=False)
+    
+    @classmethod
+    def from_dict(cls, data: dict) -> 'ErrorMessage':
         return cls(**data)
 
 

@@ -1,6 +1,6 @@
 """
-Home Agent 守护进程
-长轮询 MNS 队列，接收命令消息并执行，将结果发回队列
+Home Agent 守护进程 (WebSocket 架构)
+通过 WebSocket 连接 mars-sandbox,接收命令消息并执行,将结果发回
 """
 
 import json
@@ -9,6 +9,7 @@ import signal
 import sys
 import os
 import argparse
+import asyncio
 from pathlib import Path
 
 # 将项目根目录和 home-agent 目录加入 path
@@ -20,18 +21,13 @@ sys.path.insert(0, _home_agent_dir)
 from shared.message_protocol import (
     CommandMessage,
     ResultMessage,
-    parse_message,
-    is_command_message,
-    is_result_message,
+    ErrorMessage,
 )
 from config import load_config, validate_config
-from mns_client import MNSClient
+from ws_client import WebSocketClient
 from command_executor import execute_command
 from security import check_command
 from command_logger import AuditLogger, NullAuditLogger
-
-# 优雅退出标志
-_running = True
 
 
 def setup_logging(log_file: str = None):
@@ -62,49 +58,20 @@ def signal_handler(signum, frame):
     _running = False
 
 
-def process_message(mns_client: MNSClient, receipt_handle: str, message_body: str, config, audit_logger):
+async def handle_command(ws_client: WebSocketClient, cmd_msg: CommandMessage, config, audit_logger) -> ResultMessage:
     """
-    处理收到的消息
-
-    单队列模式：
-    - command 消息 -> 执行命令，发送 result，删除原消息
-    - result 消息 -> re-send 回队列，删除原消息（这不是给 home-agent 的）
+    处理命令消息
+    
+    Args:
+        ws_client: WebSocket 客户端
+        cmd_msg: 命令消息
+        config: 配置对象
+        audit_logger: 审计日志
+        
+    Returns:
+        执行结果消息
     """
     logger = logging.getLogger(__name__)
-    
-    try:
-        data = parse_message(message_body)
-    except json.JSONDecodeError as e:
-        logger.error("消息 JSON 解析失败: %s, body=%s", str(e), message_body[:200])
-        # 删除无法解析的消息，避免死循环
-        try:
-            mns_client.delete_message(receipt_handle)
-        except Exception:
-            pass
-        return
-    
-    if is_command_message(data):
-        _handle_command(mns_client, receipt_handle, data, config, audit_logger)
-    elif is_result_message(data):
-        _handle_result_passthrough(mns_client, receipt_handle, message_body, data)
-    else:
-        logger.warning("未知消息类型: %s, 删除消息", data.get("type"))
-        try:
-            mns_client.delete_message(receipt_handle)
-        except Exception:
-            pass
-
-
-def _handle_command(mns_client: MNSClient, receipt_handle: str, data: dict, config, audit_logger):
-    """处理命令消息"""
-    logger = logging.getLogger(__name__)
-    
-    try:
-        cmd_msg = CommandMessage.from_dict(data)
-    except Exception as e:
-        logger.error("命令消息解析失败: %s", str(e))
-        mns_client.delete_message(receipt_handle)
-        return
     
     request_id = cmd_msg.request_id
     command = cmd_msg.command
@@ -160,36 +127,17 @@ def _handle_command(mns_client: MNSClient, receipt_handle: str, data: dict, conf
             stderr_preview=result.stderr,
         )
     
-    # 发送结果到队列
-    result_json = result.to_json()
-    mns_client.send_message(result_json)
     logger.info(
-        "结果已发送: request_id=%s, exit_code=%d, duration=%dms",
+        "命令执行完成: request_id=%s, exit_code=%d, duration=%dms",
         request_id, result.exit_code, result.duration_ms,
     )
     
-    # 删除原始命令消息
-    mns_client.delete_message(receipt_handle)
+    return result
 
 
-def _handle_result_passthrough(
-    mns_client: MNSClient,
-    receipt_handle: str,
-    message_body: str,
-    data: dict,
-):
-    """处理非本端的 result 消息：re-send 回队列"""
-    logger = logging.getLogger(__name__)
-    request_id = data.get("request_id", "unknown")
-    logger.debug(
-        "收到 result 消息（非本端），re-send 回队列: request_id=%s", request_id
-    )
-    mns_client.resend_and_delete(receipt_handle, message_body)
-
-
-def main():
-    """主入口"""
-    parser = argparse.ArgumentParser(description="Home Agent - 家庭服务器守护进程")
+async def async_main():
+    """异步主入口"""
+    parser = argparse.ArgumentParser(description="Home Agent - 家庭服务器守护进程 (WebSocket)")
     parser.add_argument(
         "-c", "--config",
         type=str,
@@ -216,8 +164,9 @@ def main():
     audit_logger = AuditLogger(config.agent.audit_log_dir)
 
     logger.info("=" * 50)
-    logger.info("Home Agent 启动")
-    logger.info("MNS 队列: %s", config.mns.queue_name)
+    logger.info("Home Agent 启动 (WebSocket 架构)")
+    logger.info("节点 ID: %s", config.agent.node_id)
+    logger.info("mars-sandbox: %s", config.agent.mars_sandbox_url)
     logger.info("工作目录: %s", config.agent.working_dir)
     logger.info("最大超时: %ds", config.agent.max_timeout)
     logger.info("黑名单命令数: %d", len(config.agent.blocked_commands))
@@ -225,45 +174,53 @@ def main():
     logger.info("=" * 50)
     
     # 注册信号处理
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
+    loop = asyncio.get_event_loop()
+    stop_event = asyncio.Event()
     
-    # 初始化 MNS 客户端
+    def signal_handler():
+        logger.info("收到退出信号，准备关闭...")
+        stop_event.set()
+    
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, signal_handler)
+    
+    # 初始化 WebSocket 客户端
+    ws_client = WebSocketClient(
+        server_url=config.agent.mars_sandbox_url,
+        node_id=config.agent.node_id,
+        node_secret=config.agent.node_secret,
+        heartbeat_interval=config.agent.heartbeat_interval,
+        reconnect_delay=config.agent.reconnect_delay,
+        max_reconnect_attempts=config.agent.max_reconnect_attempts,
+    )
+    
+    # 设置命令处理器
+    ws_client.set_command_handler(
+        lambda cmd_msg: handle_command(ws_client, cmd_msg, config, audit_logger)
+    )
+    
     try:
-        mns_client = MNSClient(
-            endpoint=config.mns.endpoint,
-            access_key_id=config.mns.access_key_id,
-            access_key_secret=config.mns.access_key_secret,
-            queue_name=config.mns.queue_name,
+        # 运行 WebSocket 客户端 (自动重连)
+        await asyncio.gather(
+            ws_client.run_with_reconnect(),
+            stop_event.wait(),
         )
+    except asyncio.CancelledError:
+        logger.info("主循环被取消")
+    finally:
+        await ws_client.close()
+        logger.info("Home Agent 已退出")
+
+
+def main():
+    """主入口"""
+    try:
+        asyncio.run(async_main())
+    except KeyboardInterrupt:
+        logging.getLogger(__name__).info("收到 KeyboardInterrupt，退出...")
     except Exception as e:
-        logger.error("MNS 客户端初始化失败: %s", str(e))
+        logging.getLogger(__name__).error("启动失败: %s", str(e), exc_info=True)
         sys.exit(1)
-    
-    # 主循环
-    wait_seconds = 30  # 长轮询等待时间
-    
-    while _running:
-        try:
-            result = mns_client.receive_message(wait_seconds)
-            
-            if result is None:
-                logger.debug("队列空，继续等待...")
-                continue
-            
-            receipt_handle, message_body = result
-            process_message(mns_client, receipt_handle, message_body, config, audit_logger)
-            
-        except KeyboardInterrupt:
-            logger.info("收到 KeyboardInterrupt，退出...")
-            break
-        except Exception as e:
-            logger.error("主循环异常: %s", str(e), exc_info=True)
-            # 短暂休眠后重试，避免快速循环
-            import time
-            time.sleep(5)
-    
-    logger.info("Home Agent 已退出")
 
 
 if __name__ == "__main__":

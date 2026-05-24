@@ -1,14 +1,9 @@
-# Home Agent 配置示例
+# Home Agent 配置示例 (WebSocket 架构)
 # 复制此文件为 config.yaml 并填入真实值
 # 环境变量优先级高于配置文件
 
-mns:
-  endpoint: "https://{account-id}.mns.{region}.aliyuncs.com"
-  access_key_id: "your-ak"           # 或 env: ALIBABA_CLOUD_ACCESS_KEY_ID
-  access_key_secret: "your-sk"       # 或 env: ALIBABA_CLOUD_ACCESS_KEY_SECRET
-  queue_name: "home-hub-queue"       # 单队列，或 env: MNS_QUEUE_NAME
-
 agent:
+  node_id: "home-server-01"          # 节点标识，默认使用 hostname
   max_timeout: 120                   # 命令最大执行时间（秒）
   allowed_commands: []               # 白名单（空则不限制）
   blocked_commands:                  # 黑名单
@@ -20,3 +15,10 @@ agent:
   working_dir: "~"                   # 默认工作目录
   log_file: null                     # 日志文件路径，null 输出到 stdout
   audit_log_dir: null                # 审计日志目录，null 默认 ~/orbit-mind/logs/
+  
+  # WebSocket 配置
+  mars_sandbox_url: "ws://8.213.135.161:8888"  # mars-sandbox WebSocket 地址
+  node_secret: "your-node-secret"              # 节点密钥（用于 WebSocket 连接认证）
+  heartbeat_interval: 60                       # 心跳间隔（秒）
+  reconnect_delay: 5                           # 重连延迟（秒）
+  max_reconnect_attempts: 0                    # 最大重连次数，0 表示无限重试
