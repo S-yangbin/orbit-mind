@@ -1,0 +1,40 @@
+[Unit]
+Description=Home Agent - 家庭服务器守护进程 (MNS 命令执行)
+Documentation=https://github.com/syb/orbit-mind
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=syb
+Group=syb
+
+# 工作目录
+WorkingDirectory=/home/syb/orbit-mind
+
+# 启动命令
+ExecStart=/usr/bin/python3 /home/syb/orbit-mind/home-agent/main.py -c /home/syb/orbit-mind/home-agent/config.yaml
+
+# 自动重启（崩溃后 5 秒重启，10 分钟内最多重启 5 次）
+Restart=on-failure
+RestartSec=5
+StartLimitIntervalSec=600
+StartLimitBurst=5
+
+# 环境变量（从文件加载，避免明文写在 service 里）
+EnvironmentFile=/home/syb/orbit-mind/home-agent/.env
+
+# 日志
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=home-agent
+
+# 安全加固
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/syb/orbit-mind/logs
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
