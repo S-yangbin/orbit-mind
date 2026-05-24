@@ -38,3 +38,5 @@ htmlcov/
 
 .env
 
+mars-sandbox/mars-sandbox-backend.tar.gz
+mars-sandbox/backend/mars_sandbox_test.db
