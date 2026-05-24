@@ -89,6 +89,12 @@ async def handle_websocket_connection(websocket: ServerConnection, node_id: str,
                 else:
                     logger.warning("节点 %s 发送未知消息类型: %s", node_id, msg_type)
                     
+            except RuntimeError as e:
+                # 连接已断开
+                if "disconnect" in str(e).lower():
+                    logger.info("节点 %s 连接已断开", node_id)
+                    break
+                raise
             except json.JSONDecodeError as e:
                 logger.error("节点 %s 消息JSON解析失败: %s", node_id, str(e))
             except Exception as e:
