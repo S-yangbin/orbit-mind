@@ -70,6 +70,9 @@ async def handle_websocket_connection(websocket: ServerConnection, node_id: str,
             logger.error("节点 %s 注册超时", node_id)
             await websocket.close()
             return
+        except RuntimeError as e:
+            logger.warning("节点 %s 注册阶段连接断开: %s", node_id, str(e))
+            return
         
         # 注册成功,加入连接池
         await pool.register(node_id, websocket)
@@ -95,6 +98,10 @@ async def handle_websocket_connection(websocket: ServerConnection, node_id: str,
                     
             except WebSocketDisconnect as e:
                 logger.info("节点 %s WebSocket断开: code=%s", node_id, e.code)
+                break
+            except RuntimeError as e:
+                # Starlette 在连接已关闭时可能抛出 RuntimeError 而非 WebSocketDisconnect
+                logger.info("节点 %s WebSocket连接已断开 (RuntimeError): %s", node_id, str(e))
                 break
             except json.JSONDecodeError as e:
                 logger.error("节点 %s 消息JSON解析失败: %s", node_id, str(e))

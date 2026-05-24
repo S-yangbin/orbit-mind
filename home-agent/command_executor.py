@@ -44,9 +44,9 @@ def execute_command(
     start_time = time.time()
     
     try:
+        # 使用 bash -il (交互式 + 登录 shell) 执行，同时加载 .bashrc 和 .profile / .bash_profile
         result = subprocess.run(
-            command,
-            shell=True,
+            ["/bin/bash", "-il", "-c", command],
             capture_output=True,
             text=True,
             timeout=effective_timeout,

@@ -1,4 +1,5 @@
 import { useState, useEffect, createContext, useContext } from "react";
+import { useNavigate } from "react-router-dom";
 import { getAuthStatus, logout as apiLogout } from "../api/auth";
 
 interface AuthContextType {
@@ -13,6 +14,7 @@ const AuthContext = createContext<AuthContextType | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const navigate = useNavigate();
 
   useEffect(() => {
     getAuthStatus()
@@ -38,7 +40,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = async () => {
     await apiLogout();
     setIsAuthenticated(false);
-    window.location.href = "/login";
+    navigate("/login", { replace: true });
   };
 
   return (

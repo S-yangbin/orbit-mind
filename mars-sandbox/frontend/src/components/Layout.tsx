@@ -26,7 +26,7 @@ export function Layout() {
   )?.key || "/";
 
   return (
-    <AntLayout style={{ minHeight: "100vh" }}>
+    <AntLayout style={{ height: "100vh", overflow: "auto" }}>
       <Header style={{
         display: "flex",
         alignItems: "center",
@@ -34,6 +34,10 @@ export function Layout() {
         background: "#fff",
         borderBottom: "1px solid #f0f0f0",
         padding: "0 24px",
+        position: "sticky",
+        top: 0,
+        zIndex: 100,
+        boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
           <RocketOutlined style={{ fontSize: 24, color: "#722ed1" }} />
@@ -52,7 +56,7 @@ export function Layout() {
           </Button>
         </Space>
       </Header>
-      <Content style={{ padding: 24, background: "#f5f5f5", minHeight: "calc(100vh - 64px)" }}>
+      <Content style={{ padding: 24, background: "#f5f5f5" }}>
         <Outlet />
       </Content>
     </AntLayout>

@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import Page, Tag, PageTag
 from ..schemas import PageInDB, PageUpdate, TagBase
-from ..dependencies import current_user
+from ..dependencies import current_user, require_auth_or_api_key
 
 router = APIRouter(prefix="/api/pages", tags=["pages"])
 
@@ -20,7 +20,7 @@ def list_pages(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
-    user=Depends(current_user),
+    user=Depends(require_auth_or_api_key),
 ):
     """List pages with search, filter, sort, and pagination."""
     query = db.query(Page)
@@ -76,7 +76,7 @@ def list_pages(
 
 
 @router.get("/{page_id}", response_model=dict)
-def get_page(page_id: int, db: Session = Depends(get_db), user=Depends(current_user)):
+def get_page(page_id: int, db: Session = Depends(get_db), user=Depends(require_auth_or_api_key)):
     """Get page detail."""
     page = db.query(Page).filter(Page.id == page_id).first()
     if not page:
@@ -102,7 +102,7 @@ def update_page(
     page_id: int,
     body: PageUpdate,
     db: Session = Depends(get_db),
-    user=Depends(current_user),
+    user=Depends(require_auth_or_api_key),
 ):
     """Update page metadata (user edits are protected from scan override)."""
     page = db.query(Page).filter(Page.id == page_id).first()
@@ -152,7 +152,7 @@ def update_page(
 
 
 @router.delete("/{page_id}")
-def delete_page(page_id: int, db: Session = Depends(get_db), user=Depends(current_user)):
+def delete_page(page_id: int, db: Session = Depends(get_db), user=Depends(require_auth_or_api_key)):
     """Delete page record (does not delete files)."""
     page = db.query(Page).filter(Page.id == page_id).first()
     if not page:

@@ -4,13 +4,13 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import Tag, PageTag
 from ..schemas import TagCreate, TagUpdate, TagBase
-from ..dependencies import current_user
+from ..dependencies import current_user, require_auth_or_api_key
 
 router = APIRouter(prefix="/api/tags", tags=["tags"])
 
 
 @router.get("", response_model=list)
-def list_tags(db: Session = Depends(get_db), user=Depends(current_user)):
+def list_tags(db: Session = Depends(get_db), user=Depends(require_auth_or_api_key)):
     """List all tags with page count."""
     tags = db.query(Tag).all()
     result = []
@@ -21,7 +21,7 @@ def list_tags(db: Session = Depends(get_db), user=Depends(current_user)):
 
 
 @router.post("", response_model=dict)
-def create_tag(body: TagCreate, db: Session = Depends(get_db), user=Depends(current_user)):
+def create_tag(body: TagCreate, db: Session = Depends(get_db), user=Depends(require_auth_or_api_key)):
     """Create a new tag."""
     existing = db.query(Tag).filter(Tag.name == body.name).first()
     if existing:
@@ -35,7 +35,7 @@ def create_tag(body: TagCreate, db: Session = Depends(get_db), user=Depends(curr
 
 @router.put("/{tag_id}", response_model=dict)
 def update_tag(
-    tag_id: int, body: TagUpdate, db: Session = Depends(get_db), user=Depends(current_user)
+    tag_id: int, body: TagUpdate, db: Session = Depends(get_db), user=Depends(require_auth_or_api_key)
 ):
     """Rename a tag."""
     tag = db.query(Tag).filter(Tag.id == tag_id).first()
@@ -53,7 +53,7 @@ def update_tag(
 
 
 @router.delete("/{tag_id}")
-def delete_tag(tag_id: int, db: Session = Depends(get_db), user=Depends(current_user)):
+def delete_tag(tag_id: int, db: Session = Depends(get_db), user=Depends(require_auth_or_api_key)):
     """Delete a tag (removes associations)."""
     tag = db.query(Tag).filter(Tag.id == tag_id).first()
     if not tag:
