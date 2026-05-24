@@ -54,3 +54,17 @@ export interface NodeListResponse {
   offline: number;
   nodes: NodeInfo[];
 }
+
+export interface NodeCommandRequest {
+  command: string;
+  timeout?: number;
+}
+
+export interface NodeCommandResponse {
+  request_id: string;
+  node_id: string;
+  exit_code: number;
+  stdout: string;
+  stderr: string;
+  duration_ms: number;
+}

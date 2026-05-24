@@ -19,6 +19,8 @@ from ..routers.commands import cache_result
 from ..utils.timezone import beijing_now
 from .connection_pool import pool
 
+logger = logging.getLogger(__name__)
+
 # 北京时间时区已在 utils.timezone 中定义
 
 
@@ -112,6 +114,9 @@ async def _handle_register(websocket: ServerConnection, node_id: str, data: Dict
     """处理节点注册消息"""
     logger.info("处理节点 %s 注册请求", node_id)
     
+    # 将注册信息写入数据库
+    _update_node_register(node_id, data)
+    
     # 发送注册确认
     ack = {
         "type": "register_ack",
@@ -125,6 +130,8 @@ async def _handle_register(websocket: ServerConnection, node_id: str, data: Dict
 async def _handle_heartbeat(node_id: str, data: Dict[str, Any]):
     """处理心跳消息"""
     await pool.update_heartbeat(node_id)
+    # 同步更新数据库中的 last_heartbeat_at，供前端 HTTP API 查询
+    _update_node_heartbeat(node_id)
     # 注意: home-agent 端不要求必须收到 heartbeat_ack
 
 
@@ -152,6 +159,56 @@ async def _handle_node_error(node_id: str, data: Dict[str, Any]):
         "收到节点 %s 的错误: request_id=%s, error_code=%s, message=%s",
         node_id, request_id, error_code, message
     )
+
+
+def _update_node_register(node_id: str, data: Dict[str, Any]):
+    """将注册信息写入数据库（upsert）"""
+    try:
+        db = SessionLocal()
+        try:
+            node = db.query(Node).filter(Node.node_id == node_id).first()
+            now = beijing_now()
+            if node:
+                node.hostname = data.get("hostname", node.hostname)
+                node.ip = data.get("ip", node.ip)
+                node.platform = data.get("platform", node.platform)
+                node.version = data.get("version", node.version)
+                node.status = "online"
+                node.last_heartbeat_at = now
+            else:
+                node = Node(
+                    node_id=node_id,
+                    hostname=data.get("hostname", ""),
+                    ip=data.get("ip", ""),
+                    platform=data.get("platform", ""),
+                    version=data.get("version", "1.0.0"),
+                    status="online",
+                    last_heartbeat_at=now,
+                )
+                db.add(node)
+            db.commit()
+            logger.debug("节点 %s 注册信息已写入数据库", node_id)
+        finally:
+            db.close()
+    except Exception as e:
+        logger.error("节点 %s 注册信息写入失败: %s", node_id, e)
+
+
+def _update_node_heartbeat(node_id: str):
+    """更新数据库中节点的 last_heartbeat_at"""
+    try:
+        db = SessionLocal()
+        try:
+            node = db.query(Node).filter(Node.node_id == node_id).first()
+            if node:
+                node.last_heartbeat_at = beijing_now()
+                node.status = "online"
+                db.commit()
+                logger.debug("节点 %s 心跳时间已更新", node_id)
+        finally:
+            db.close()
+    except Exception as e:
+        logger.error("更新节点 %s 心跳时间失败: %s", node_id, e)
 
 
 def _update_node_status(node_id: str, status: str):

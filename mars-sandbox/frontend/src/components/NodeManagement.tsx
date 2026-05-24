@@ -20,12 +20,14 @@ import {
   DesktopOutlined,
   WifiOutlined,
   DisconnectOutlined,
+  PlayCircleOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import { fetchNodes, deleteNode } from "../api/nodes";
 import type { NodeInfo } from "../types";
+import { CommandModal } from "./CommandModal";
 
 dayjs.extend(relativeTime);
 
@@ -38,6 +40,8 @@ export function NodeManagement() {
   const [online, setOnline] = useState(0);
   const [offline, setOffline] = useState(0);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [commandModalOpen, setCommandModalOpen] = useState(false);
+  const [selectedNodeId, setSelectedNodeId] = useState<string>("");
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -144,23 +148,37 @@ export function NodeManagement() {
     {
       title: "操作",
       key: "action",
-      width: 80,
+      width: 120,
       render: (_, record) => (
-        <Popconfirm
-          title="确认删除"
-          description={`确定要删除节点 "${record.node_id}" 吗？`}
-          onConfirm={() => handleDelete(record.node_id)}
-          okText="删除"
-          cancelText="取消"
-          okButtonProps={{ danger: true }}
-        >
-          <Button
-            type="text"
-            danger
-            icon={<DeleteOutlined />}
-            size="small"
-          />
-        </Popconfirm>
+        <Space size="small">
+          <Tooltip title={record.status === "online" ? "执行命令" : "节点离线"}>
+            <Button
+              type="text"
+              icon={<PlayCircleOutlined />}
+              size="small"
+              disabled={record.status !== "online"}
+              onClick={() => {
+                setSelectedNodeId(record.node_id);
+                setCommandModalOpen(true);
+              }}
+            />
+          </Tooltip>
+          <Popconfirm
+            title="确认删除"
+            description={`确定要删除节点 "${record.node_id}" 吗？`}
+            onConfirm={() => handleDelete(record.node_id)}
+            okText="删除"
+            cancelText="取消"
+            okButtonProps={{ danger: true }}
+          >
+            <Button
+              type="text"
+              danger
+              icon={<DeleteOutlined />}
+              size="small"
+            />
+          </Popconfirm>
+        </Space>
       ),
     },
   ];
@@ -230,6 +248,12 @@ export function NodeManagement() {
           locale={{ emptyText: "暂无注册节点" }}
         />
       </Card>
+
+      <CommandModal
+        open={commandModalOpen}
+        nodeId={selectedNodeId}
+        onClose={() => setCommandModalOpen(false)}
+      />
     </div>
   );
 }

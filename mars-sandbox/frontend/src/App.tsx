@@ -1,10 +1,12 @@
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./hooks/useAuth";
 import { Layout } from "./components/Layout";
-import { LoginPage } from "./components/LoginPage";
-import { CardGrid } from "./components/CardGrid";
-import { PagePreview } from "./components/PagePreview";
-import { NodeManagement } from "./components/NodeManagement";
+
+const LoginPage = lazy(() => import("./components/LoginPage").then(m => ({ default: m.LoginPage })));
+const CardGrid = lazy(() => import("./components/CardGrid").then(m => ({ default: m.CardGrid })));
+const PagePreview = lazy(() => import("./components/PagePreview").then(m => ({ default: m.PagePreview })));
+const NodeManagement = lazy(() => import("./components/NodeManagement").then(m => ({ default: m.NodeManagement })));
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
@@ -42,7 +44,9 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <AppRoutes />
+        <Suspense fallback={<div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>Loading...</div>}>
+          <AppRoutes />
+        </Suspense>
       </AuthProvider>
     </BrowserRouter>
   );

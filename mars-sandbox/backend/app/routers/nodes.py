@@ -1,9 +1,11 @@
 """Node management router - heartbeat-based node discovery."""
 import hmac
+import uuid
 from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Header, Request, status
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from ..config import settings
@@ -12,6 +14,8 @@ from ..dependencies import require_auth
 from ..models import Node
 from ..schemas import NodeHeartbeatRequest, NodeResponse, NodeListResponse
 from ..utils.timezone import beijing_now
+from ..ws.connection_pool import pool
+from ..routers.commands import _wait_for_result
 
 router = APIRouter(prefix="/api/nodes", tags=["nodes"])
 
@@ -60,7 +64,14 @@ def _compute_status(node: Node, stale_seconds: int) -> str:
     """Compute real-time status based on last_heartbeat_at."""
     if not node.last_heartbeat_at:
         return "offline"
-    age = (beijing_now() - node.last_heartbeat_at).total_seconds()
+    now = beijing_now()
+    last = node.last_heartbeat_at
+    # 数据库读出可能是 naive datetime，统一去掉 tzinfo 再比较
+    if last.tzinfo is None and now.tzinfo is not None:
+        now = now.replace(tzinfo=None)
+    elif last.tzinfo is not None and now.tzinfo is None:
+        last = last.replace(tzinfo=None)
+    age = (now - last).total_seconds()
     return "online" if age <= stale_seconds else "offline"
 
 
@@ -143,6 +154,96 @@ async def list_nodes(
         online=len([n for n in result if n.status == "online"]),
         offline=len([n for n in result if n.status == "offline"]),
         nodes=result,
+    )
+
+
+class NodeCommandRequest(BaseModel):
+    """Dashboard 命令请求"""
+    command: str
+    timeout: int = 30
+
+
+class NodeCommandResponse(BaseModel):
+    """Dashboard 命令响应"""
+    request_id: str
+    node_id: str
+    exit_code: int
+    stdout: str = ""
+    stderr: str = ""
+    duration_ms: int = 0
+
+
+@router.post("/{node_id}/command", response_model=NodeCommandResponse)
+async def execute_node_command(
+    node_id: str,
+    payload: NodeCommandRequest,
+    _=Depends(require_auth),
+):
+    """
+    Dashboard 发送命令到指定节点并等待结果（cookie 认证）
+    """
+    import json
+    import logging
+    logger = logging.getLogger(__name__)
+
+    command = payload.command
+    timeout = payload.timeout
+
+    logger.info("Dashboard 命令请求: node_id=%s, command=%s", node_id, command)
+
+    if not await pool.is_online(node_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"节点 {node_id} 离线或不存在",
+        )
+
+    websocket = await pool.get_connection(node_id)
+    if not websocket:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"节点 {node_id} 连接不可用",
+        )
+
+    request_id = str(uuid.uuid4())
+    command_msg = {
+        "type": "command",
+        "request_id": request_id,
+        "command": command,
+        "timeout": timeout,
+        "source": "dashboard",
+        "created_at": beijing_now().isoformat(),
+    }
+
+    try:
+        await websocket.send_text(json.dumps(command_msg))
+        logger.info("命令已发送到节点 %s: request_id=%s", node_id, request_id)
+    except Exception as e:
+        logger.error("发送命令到节点 %s 失败: %s", node_id, e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"发送命令失败: {e}",
+        )
+
+    result = await _wait_for_result(request_id, timeout)
+
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail=f"命令执行超时({timeout}s)",
+        )
+
+    logger.info(
+        "Dashboard 命令执行完成: node_id=%s, request_id=%s, exit_code=%d",
+        node_id, request_id, result.get("exit_code", -1),
+    )
+
+    return NodeCommandResponse(
+        request_id=request_id,
+        node_id=node_id,
+        exit_code=result.get("exit_code", -1),
+        stdout=result.get("stdout", ""),
+        stderr=result.get("stderr", ""),
+        duration_ms=result.get("duration_ms", 0),
     )
 
 
