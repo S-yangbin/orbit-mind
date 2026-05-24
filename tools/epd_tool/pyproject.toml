@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "epd-tool"
+version = "2.0.0"
+description = "EPD-nRF5 电子墨水屏 BLE 命令行工具"
+license = "MIT"
+requires-python = ">=3.9"
+authors = [
+    {name = "EPD-nRF5 Contributors"},
+]
+keywords = ["epd", "e-paper", "ble", "bluetooth", "nrf5", "eink"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: System :: Hardware :: Hardware Drivers",
+]
+
+dependencies = [
+    "bleak>=0.21.0",
+    "Pillow>=9.0.0",
+    "typer>=0.12.0",
+    "rich>=13.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "build>=1.0.0",
+    "twine>=5.0.0",
+]
+standalone = [
+    "pyinstaller>=6.0.0",
+]
+
+[project.scripts]
+epd-tool = "epd_tool.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/tsl0922/EPD-nRF5"
+Repository = "https://github.com/tsl0922/EPD-nRF5"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["epd_tool*"]
+
+[tool.setuptools.package-data]
+epd_tool = ["py.typed"]
+
+[project.readme]
+text = "EPD-nRF5 电子墨水屏 BLE 命令行工具 - 通过蓝牙控制电子墨水屏设备，支持图片处理和发送。"
+content-type = "text/plain"
