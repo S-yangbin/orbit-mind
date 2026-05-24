@@ -12,15 +12,6 @@ import yaml
 
 
 @dataclass
-class MNSConfig:
-    """MNS 连接配置"""
-    endpoint: str = ""
-    access_key_id: str = ""
-    access_key_secret: str = ""
-    queue_name: str = "mate-notify"
-
-
-@dataclass
 class AgentConfig:
     """Agent 运行配置"""
     node_id: str = ""  # 节点标识，默认自动生成为 hostname
@@ -48,7 +39,6 @@ class AgentConfig:
 @dataclass
 class Config:
     """完整配置"""
-    mns: MNSConfig = field(default_factory=MNSConfig)
     agent: AgentConfig = field(default_factory=AgentConfig)
 
 
@@ -76,13 +66,6 @@ def load_config(config_path: Optional[str] = None) -> Config:
     if config_path and Path(config_path).exists():
         with open(config_path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
-
-        mns_data = data.get("mns", {})
-        if mns_data:
-            config.mns.endpoint = mns_data.get("endpoint", config.mns.endpoint)
-            config.mns.access_key_id = mns_data.get("access_key_id", config.mns.access_key_id)
-            config.mns.access_key_secret = mns_data.get("access_key_secret", config.mns.access_key_secret)
-            config.mns.queue_name = mns_data.get("queue_name", config.mns.queue_name)
 
         agent_data = data.get("agent", {})
         if agent_data:

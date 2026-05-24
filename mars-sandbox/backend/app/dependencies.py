@@ -7,8 +7,8 @@ from .database import get_db
 async def require_auth(
     request: Request,
 ):
-    user = get_current_user(request)
     """Dependency that requires authentication."""
+    user = get_current_user(request)
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

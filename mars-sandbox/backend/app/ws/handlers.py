@@ -93,12 +93,6 @@ async def handle_websocket_connection(websocket: ServerConnection, node_id: str,
             except WebSocketDisconnect as e:
                 logger.info("节点 %s WebSocket断开: code=%s", node_id, e.code)
                 break
-            except RuntimeError as e:
-                # 连接已断开
-                if "disconnect" in str(e).lower():
-                    logger.info("节点 %s 连接已断开", node_id)
-                    break
-                raise
             except json.JSONDecodeError as e:
                 logger.error("节点 %s 消息JSON解析失败: %s", node_id, str(e))
             except Exception as e:
@@ -130,21 +124,7 @@ async def _handle_register(websocket: ServerConnection, node_id: str, data: Dict
 async def _handle_heartbeat(node_id: str, data: Dict[str, Any]):
     """处理心跳消息"""
     await pool.update_heartbeat(node_id)
-    
-    # 可选:更新数据库中的心跳时间
-    # 这里不需要每次心跳都写数据库,减轻数据库压力
-    
-    # 发送心跳确认
-    # 注意:home-agent端不要求必须收到heartbeat_ack,所以这里可以省略
-    # 但如果需要,可以发送:
-    # ack = {
-    #     "type": "heartbeat_ack",
-    #     "status": "ok",
-    #     "server_time": datetime.utcnow().isoformat(),
-    # }
-    # websocket = await pool.get_connection(node_id)
-    # if websocket:
-    #     await websocket.send(json.dumps(ack))
+    # 注意: home-agent 端不要求必须收到 heartbeat_ack
 
 
 async def _handle_result(node_id: str, data: Dict[str, Any]):
@@ -188,4 +168,4 @@ def _update_node_status(node_id: str, status: str):
         finally:
             db.close()
     except Exception as e:
-        logger.error("更新节点 %s 状态失败: %s", node_id, str(e))
+        logger.error("更新节点 %s 状态失败: %s", node_id, e)

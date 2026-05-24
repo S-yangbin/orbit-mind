@@ -1,26 +1,30 @@
 """HTML directory scanner: extracts metadata and generates thumbnails."""
 import os
 import hashlib
+import logging
 import re
 import uuid
 import asyncio
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
+from threading import Lock
 from bs4 import BeautifulSoup
 from sqlalchemy.orm import Session
 from .config import settings
 from .models import Page, Tag, PageTag
 from .database import SessionLocal
 
+logger = logging.getLogger(__name__)
+
 # Lock to prevent concurrent scans
-_scan_lock = False
+_scan_lock = Lock()
 _last_scan_at: Optional[datetime] = None
 _last_result: Optional[str] = None
 
 
 def is_scanning() -> bool:
-    return _scan_lock
+    return _scan_lock.locked()
 
 
 def get_last_scan_info() -> dict:
@@ -80,7 +84,7 @@ def extract_metadata(html_path: str) -> dict:
             ]
 
     except Exception as e:
-        print(f"[Scanner] Error extracting metadata from {html_path}: {e}")
+        logger.error("Error extracting metadata from %s: %s", html_path, e)
 
     return result
 
@@ -114,7 +118,7 @@ def generate_thumbnail(slug: str, html_path: str) -> Optional[str]:
 
         return f"/thumbnails/{slug}.png"
     except Exception as e:
-        print(f"[Scanner] Thumbnail generation failed for {slug}: {e}")
+        logger.error("Thumbnail generation failed for %s: %s", slug, e)
         return None
 
 
@@ -133,62 +137,61 @@ def _find_entry_file(dir_path: str) -> Optional[str]:
 
 def scan_directories() -> dict:
     """Main scan logic: sync HTML directories with database."""
-    global _scan_lock, _last_scan_at, _last_result
+    global _last_scan_at, _last_result
 
-    if _scan_lock:
+    if _scan_lock.locked():
         return {"status": "already_running"}
 
-    _scan_lock = True
-    _last_scan_at = datetime.utcnow()
-    results = {"new": 0, "updated": 0, "unchanged": 0, "removed": 0, "errors": 0}
+    with _scan_lock:
+        _last_scan_at = datetime.utcnow()
+        results = {"new": 0, "updated": 0, "unchanged": 0, "removed": 0, "errors": 0}
 
-    try:
-        db = SessionLocal()
-        html_root = Path(settings.HTML_ROOT)
+        try:
+            db = SessionLocal()
+            html_root = Path(settings.HTML_ROOT)
 
-        if not html_root.exists():
+            if not html_root.exists():
+                results["errors"] += 1
+                _last_result = f"HTML_ROOT not found: {html_root}"
+                return results
+
+            # Get all existing slugs from filesystem
+            existing_slugs = set()
+            for item in sorted(html_root.iterdir()):
+                if item.is_dir():
+                    slug = item.name
+                    existing_slugs.add(slug)
+                    try:
+                        _sync_page(db, item, slug, results)
+                    except Exception as e:
+                        logger.error("Error syncing %s: %s", slug, e)
+                        results["errors"] += 1
+
+            # Remove pages whose directories no longer exist
+            all_pages = db.query(Page).all()
+            for page in all_pages:
+                if page.slug not in existing_slugs:
+                    # Remove associated tags
+                    db.query(PageTag).filter(PageTag.page_id == page.id).delete()
+                    db.delete(page)
+                    results["removed"] += 1
+
+            db.commit()
+
+        except Exception as e:
+            _last_result = f"Scan failed: {str(e)}"
             results["errors"] += 1
-            _last_result = f"HTML_ROOT not found: {html_root}"
-            return results
+        finally:
+            db.close()
+            _last_result = (
+                f"Scan complete: {results['new']} new, "
+                f"{results['updated']} updated, "
+                f"{results['unchanged']} unchanged, "
+                f"{results['removed']} removed, "
+                f"{results['errors']} errors"
+            )
 
-        # Get all existing slugs from filesystem
-        existing_slugs = set()
-        for item in sorted(html_root.iterdir()):
-            if item.is_dir():
-                slug = item.name
-                existing_slugs.add(slug)
-                try:
-                    _sync_page(db, item, slug, results)
-                except Exception as e:
-                    print(f"[Scanner] Error syncing {slug}: {e}")
-                    results["errors"] += 1
-
-        # Remove pages whose directories no longer exist
-        all_pages = db.query(Page).all()
-        for page in all_pages:
-            if page.slug not in existing_slugs:
-                # Remove associated tags
-                db.query(PageTag).filter(PageTag.page_id == page.id).delete()
-                db.delete(page)
-                results["removed"] += 1
-
-        db.commit()
-
-    except Exception as e:
-        _last_result = f"Scan failed: {str(e)}"
-        results["errors"] += 1
-    finally:
-        db.close()
-        _scan_lock = False
-        _last_result = (
-            f"Scan complete: {results['new']} new, "
-            f"{results['updated']} updated, "
-            f"{results['unchanged']} unchanged, "
-            f"{results['removed']} removed, "
-            f"{results['errors']} errors"
-        )
-
-    return results
+        return results
 
 
 def _sync_page(db: Session, dir_path: Path, slug: str, results: dict):

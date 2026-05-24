@@ -7,6 +7,7 @@ import asyncio
 import json
 import logging
 import time
+import uuid
 from datetime import datetime
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Header, status
@@ -77,7 +78,6 @@ async def execute_command(
         )
     
     # 生成request_id
-    import uuid
     request_id = str(uuid.uuid4())
     
     # 构建命令消息
@@ -95,10 +95,10 @@ async def execute_command(
         await websocket.send_text(json.dumps(command_msg))
         logger.info("命令已发送到节点 %s: request_id=%s", node_id, request_id)
     except Exception as e:
-        logger.error("发送命令到节点 %s 失败: %s", node_id, str(e))
+        logger.error("发送命令到节点 %s 失败: %s", node_id, e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"发送命令失败: {str(e)}",
+            detail=f"发送命令失败: {e}",
         )
     
     # 等待结果(通过WebSocket返回)

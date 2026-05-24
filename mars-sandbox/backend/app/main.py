@@ -1,4 +1,5 @@
 """FastAPI application entry point."""
+import logging
 import os
 import time
 from contextlib import asynccontextmanager
@@ -15,6 +16,8 @@ from .auth import get_current_user
 from .routers import auth, pages, tags, scan, nodes, commands
 from .scanner import scan_directories
 from .ws.router import router as ws_router
+
+logger = logging.getLogger(__name__)
 
 # Frontend dist directory
 FRONTEND_DIST = Path(__file__).parent.parent / "frontend" / "dist"
@@ -34,15 +37,15 @@ def _start_background_scan():
         try:
             scan_directories()
         except Exception as e:
-            print(f"[Scheduler] Scan error: {e}")
+            logger.error("Background scan error: %s", e)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    print("[Mars Sandbox] Starting up...")
+    logger.info("Starting up...")
     init_db()
-    print("[Mars Sandbox] Database initialized.")
+    logger.info("Database initialized.")
 
     # Ensure directories exist
     os.makedirs(settings.HTML_ROOT, exist_ok=True)
@@ -52,12 +55,12 @@ async def lifespan(app: FastAPI):
     import threading
     t = threading.Thread(target=_start_background_scan, daemon=True)
     t.start()
-    print(f"[Mars Sandbox] Background scanner started (interval={settings.SCAN_INTERVAL}s).")
+    logger.info("Background scanner started (interval=%ds).", settings.SCAN_INTERVAL)
 
     yield
 
     # Shutdown
-    print("[Mars Sandbox] Shutting down.")
+    logger.info("Shutting down.")
 
 
 app = FastAPI(

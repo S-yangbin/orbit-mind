@@ -14,12 +14,12 @@ import uuid
 class RegisterMessage:
     """节点注册消息 (home-agent → mars-sandbox)"""
     type: str = "register"
-    node_id: str = None
-    hostname: str = None
-    ip: str = None
-    platform: str = None
+    node_id: Optional[str] = None
+    hostname: Optional[str] = None
+    ip: Optional[str] = None
+    platform: Optional[str] = None
     version: str = "1.0.0"
-    timestamp: str = None
+    timestamp: Optional[str] = None
     
     def __post_init__(self):
         if self.timestamp is None:
@@ -39,7 +39,7 @@ class RegisterAckMessage:
     type: str = "register_ack"
     status: str = "success"
     message: str = "注册成功"
-    server_time: str = None
+    server_time: Optional[str] = None
     
     def __post_init__(self):
         if self.server_time is None:
@@ -57,11 +57,11 @@ class RegisterAckMessage:
 class HeartbeatMessage:
     """心跳消息 (home-agent → mars-sandbox)"""
     type: str = "heartbeat"
-    node_id: str = None
+    node_id: Optional[str] = None
     uptime_seconds: int = 0
     cpu_usage: float = 0.0
     memory_usage: float = 0.0
-    timestamp: str = None
+    timestamp: Optional[str] = None
     
     def __post_init__(self):
         if self.timestamp is None:
@@ -80,7 +80,7 @@ class HeartbeatAckMessage:
     """心跳确认消息 (mars-sandbox → home-agent)"""
     type: str = "heartbeat_ack"
     status: str = "ok"
-    server_time: str = None
+    server_time: Optional[str] = None
     
     def __post_init__(self):
         if self.server_time is None:
@@ -98,11 +98,11 @@ class HeartbeatAckMessage:
 class CommandMessage:
     """命令消息 (mars-sandbox → home-agent)"""
     command: str
-    request_id: str = None
+    request_id: Optional[str] = None
     type: str = "command"
     timeout: int = 30  # 命令执行超时时间（秒）
     source: str = "hermes"
-    created_at: str = None
+    created_at: Optional[str] = None
     
     def __post_init__(self):
         if self.request_id is None:
@@ -133,13 +133,13 @@ class CommandMessage:
 @dataclass
 class ResultMessage:
     """响应消息 (home-agent → mars-sandbox)"""
-    request_id: str
-    exit_code: int
+    request_id: Optional[str] = None
+    exit_code: int = 0
     stdout: str = ""
     stderr: str = ""
     type: str = "result"
     duration_ms: int = 0
-    timestamp: str = None
+    timestamp: Optional[str] = None
     
     def __post_init__(self):
         if self.timestamp is None:
@@ -170,9 +170,9 @@ class ErrorMessage:
     """错误消息 (双向)"""
     error_code: str
     message: str
-    request_id: str = None
+    request_id: Optional[str] = None
     type: str = "error"
-    timestamp: str = None
+    timestamp: Optional[str] = None
     
     def __post_init__(self):
         if self.timestamp is None:
