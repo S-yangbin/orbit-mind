@@ -4,6 +4,7 @@ import { Layout } from "./components/Layout";
 import { LoginPage } from "./components/LoginPage";
 import { CardGrid } from "./components/CardGrid";
 import { PagePreview } from "./components/PagePreview";
+import { NodeManagement } from "./components/NodeManagement";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
@@ -29,6 +30,7 @@ function AppRoutes() {
         }
       >
         <Route index element={<CardGrid />} />
+        <Route path="nodes" element={<NodeManagement />} />
         <Route path="preview/:id" element={<PagePreview />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

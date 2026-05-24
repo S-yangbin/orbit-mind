@@ -35,3 +35,22 @@ export interface ScanStatus {
 export interface UserStatus {
   authenticated: boolean;
 }
+
+export interface NodeInfo {
+  node_id: string;
+  hostname: string;
+  ip: string;
+  platform: string;
+  version: string;
+  status: "online" | "offline";
+  last_heartbeat_at: string | null;
+  uptime_seconds: number;
+  uptime: string;
+}
+
+export interface NodeListResponse {
+  total: number;
+  online: number;
+  offline: number;
+  nodes: NodeInfo[];
+}

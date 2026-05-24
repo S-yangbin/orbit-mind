@@ -1,7 +1,7 @@
 """Node management router - heartbeat-based node discovery."""
 import hmac
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Header, Request, status
 from sqlalchemy.orm import Session
@@ -22,6 +22,22 @@ def _verify_api_key(x_api_key: str = Header(...)):
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Invalid API key",
         )
+
+
+def _verify_api_key_or_cookie(request: Request, x_api_key: Optional[str] = Header(None)):
+    """Verify either API key header or session cookie."""
+    # Check API key first
+    if x_api_key and hmac.compare_digest(x_api_key, settings.NODE_API_KEY):
+        return
+    # Fall back to cookie auth
+    from ..auth import get_current_user
+    user = get_current_user(request)
+    if user:
+        return
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Authentication required",
+    )
 
 
 def _format_uptime(seconds: int) -> str:
@@ -107,7 +123,7 @@ async def heartbeat(
 async def list_nodes(
     stale: int = 180,
     db: Session = Depends(get_db),
-    _: None = Depends(_verify_api_key),
+    _: None = Depends(_verify_api_key_or_cookie),
 ):
     """List all registered nodes with real-time online/offline status."""
     nodes: List[Node] = db.query(Node).order_by(Node.node_id).all()

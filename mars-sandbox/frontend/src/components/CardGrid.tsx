@@ -58,19 +58,6 @@ export function CardGrid() {
 
   return (
     <div>
-      {/* Category tabs */}
-      <div style={{ marginBottom: 24 }}>
-        <Segmented
-          options={CATEGORY_OPTIONS}
-          value={selectedCategory}
-          onChange={(v) => {
-            setSelectedCategory(v as string);
-            setCurrentPage(1);
-          }}
-          size="large"
-        />
-      </div>
-
       {/* Top bar */}
       <div style={{
         display: "flex",
@@ -81,6 +68,17 @@ export function CardGrid() {
         gap: 12,
       }}>
         <Space wrap>
+           {/* Category tabs */}
+          <Segmented
+            options={CATEGORY_OPTIONS}
+            value={selectedCategory}
+            onChange={(v) => {
+              setSelectedCategory(v as string);
+              setCurrentPage(1);
+            }}
+            size="large"
+          />
+          
           <Input
             placeholder="搜索标题或描述..."
             prefix={<SearchOutlined />}
