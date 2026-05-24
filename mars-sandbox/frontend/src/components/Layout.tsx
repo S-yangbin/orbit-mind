@@ -26,7 +26,7 @@ export function Layout() {
   )?.key || "/";
 
   return (
-    <AntLayout style={{ height: "100vh", overflow: "auto" }}>
+    <AntLayout style={{ minHeight: "100vh" }}>
       <Header style={{
         display: "flex",
         alignItems: "center",
@@ -47,7 +47,8 @@ export function Layout() {
             selectedKeys={[selectedKey]}
             items={NAV_ITEMS}
             onClick={({ key }) => navigate(key)}
-            style={{ border: "none", marginLeft: 24 }}
+            disabledOverflow
+            style={{ border: "none", marginLeft: 24, flex: 1 }}
           />
         </div>
         <Space>
@@ -56,7 +57,7 @@ export function Layout() {
           </Button>
         </Space>
       </Header>
-      <Content style={{ padding: 24, background: "#f5f5f5" }}>
+      <Content style={{ padding: 24, background: "#f5f5f5", minHeight: "calc(100vh - 64px)" }}>
         <Outlet />
       </Content>
     </AntLayout>

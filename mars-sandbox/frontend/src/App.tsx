@@ -1,5 +1,5 @@
 import { lazy, Suspense } from "react";
-import { HashRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./hooks/useAuth";
 import { Layout } from "./components/Layout";
 
@@ -42,12 +42,12 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <Router>
+    <BrowserRouter>
       <AuthProvider>
         <Suspense fallback={<div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>Loading...</div>}>
           <AppRoutes />
         </Suspense>
       </AuthProvider>
-    </Router>
+    </BrowserRouter>
   );
 }
