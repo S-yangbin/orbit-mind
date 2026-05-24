@@ -316,7 +316,7 @@ class WebSocketClient:
                 logger.error("WebSocket 运行异常: %s", str(e), exc_info=True)
             
             # 清理
-            self._cleanup()
+            await self._cleanup()
             
             # 重连
             if self._running:
@@ -335,16 +335,17 @@ class WebSocketClient:
         delay = min(delay, 60)  # 最大延迟 60 秒
         
         self._reconnect_attempt += 1
+        max_str = str(self.max_reconnect_attempts) if self.max_reconnect_attempts > 0 else "∞"
         logger.info(
-            "将在 %d 秒后重连 (尝试 %d/%d)...",
+            "将在 %d 秒后重连 (尝试 %d/%s)...",
             delay,
             self._reconnect_attempt,
-            self.max_reconnect_attempts if self.max_reconnect_attempts > 0 else "∞"
+            max_str
         )
         
         await asyncio.sleep(delay)
     
-    def _cleanup(self):
+    async def _cleanup(self):
         """清理资源"""
         if self._heartbeat_task:
             self._heartbeat_task.cancel()
@@ -352,8 +353,8 @@ class WebSocketClient:
         
         if self.websocket:
             try:
-                asyncio.get_event_loop().run_until_complete(self.websocket.close())
-            except:
+                await self.websocket.close()
+            except Exception:
                 pass
             self.websocket = None
     
@@ -361,7 +362,7 @@ class WebSocketClient:
         """关闭连接"""
         logger.info("正在关闭 WebSocket 客户端...")
         self._running = False
-        self._cleanup()
+        await self._cleanup()
     
     @staticmethod
     def _get_local_ip() -> str:

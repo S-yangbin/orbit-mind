@@ -9,6 +9,7 @@ import logging
 import time
 from datetime import datetime
 from typing import Dict, Any
+from starlette.websockets import WebSocketDisconnect
 from websockets.asyncio.server import ServerConnection
 
 from ..config import settings
@@ -89,6 +90,9 @@ async def handle_websocket_connection(websocket: ServerConnection, node_id: str,
                 else:
                     logger.warning("节点 %s 发送未知消息类型: %s", node_id, msg_type)
                     
+            except WebSocketDisconnect as e:
+                logger.info("节点 %s WebSocket断开: code=%s", node_id, e.code)
+                break
             except RuntimeError as e:
                 # 连接已断开
                 if "disconnect" in str(e).lower():

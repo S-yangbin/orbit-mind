@@ -38,5 +38,9 @@ htmlcov/
 
 .env
 
+home-agent-ws.tar.gz
 mars-sandbox/mars-sandbox-backend.tar.gz
 mars-sandbox/backend/mars_sandbox_test.db
+
+node_modules/
+

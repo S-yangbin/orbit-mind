@@ -95,7 +95,7 @@ def load_config(config_path: Optional[str] = None) -> Config:
                 agent_data.get("working_dir", config.agent.working_dir)
             )
             config.agent.log_file = agent_data.get("log_file", config.agent.log_file)
-            if "audit_log_dir" in agent_data:
+            if agent_data.get("audit_log_dir"):
                 config.agent.audit_log_dir = os.path.expanduser(agent_data["audit_log_dir"])
             
             # WebSocket 配置

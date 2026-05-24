@@ -40,81 +40,85 @@ orbit-mind/
 
 位置：`shared/message_protocol.py`
 
-定义三种消息类型的数据类，均支持 JSON 序列化/反序列化。
+定义所有消息类型的数据类，均支持 JSON 序列化/反序列化。
 
 ```python
 from shared.message_protocol import (
-    CommandMessage,     # 命令消息
-    ResultMessage,      # 结果消息
-    HeartbeatMessage,   # 心跳消息
-    parse_message,      # 解析 JSON → dict
-    is_command_message, # 类型判断
-    is_result_message,
-    is_heartbeat_message,
+    RegisterMessage,      # 节点注册消息
+    RegisterAckMessage,   # 注册确认消息
+    HeartbeatMessage,     # 心跳消息
+    HeartbeatAckMessage,  # 心跳确认消息
+    CommandMessage,       # 命令消息
+    ResultMessage,        # 结果消息
+    ErrorMessage,         # 错误消息
+    parse_message,        # 解析 JSON → dict
 )
 
 # 创建命令消息
-cmd = CommandMessage(command="ls -la", timeout=30)
+cmd = CommandMessage(command="ls -la", timeout=30, request_id="uuid")
 json_str = cmd.to_json()
 
 # 从 JSON 恢复
 cmd2 = CommandMessage.from_json(json_str)
 
-# 类型判断
+# 解析消息类型
 data = parse_message(json_str)
-if is_command_message(data):
+msg_type = data.get("type")
+if msg_type == "command":
     print("这是一条命令")
 ```
 
 **扩展新消息类型**：
 
 1. 在 `message_protocol.py` 添加新的 `@dataclass` 类
-2. 添加对应的 `is_xxx_message()` 判断函数
-3. 在 `main.py` 的 `process_message()` 中添加路由分支
+2. 实现 `to_json()` 和 `from_dict()` 方法
+3. 在 WebSocket 消息处理中添加路由分支
 
-### mns_client.py（MNS 客户端）
+### ws_client.py（WebSocket 客户端）
 
-位置：`home-agent/mns_client.py`
+位置：`home-agent/ws_client.py`
 
-封装阿里云 MNS SDK，提供简洁的操作接口。
+封装 WebSocket 连接管理，提供节点注册、心跳保活、命令接收和结果发送功能。
 
 ```python
-from mns_client import MNSClient
+from ws_client import WebSocketClient
+from shared.message_protocol import CommandMessage, ResultMessage
 
-client = MNSClient(
-    endpoint="https://xxx.mns.cn-qingdao.aliyuncs.com",
-    access_key_id="ak",
-    access_key_secret="sk",
-    queue_name="mate-notify",
+client = WebSocketClient(
+    server_url="ws://localhost:8888",
+    node_id="home-server-01",
+    node_secret="your-secret",
+    heartbeat_interval=60,
+    reconnect_delay=5,
+    max_reconnect_attempts=0,  # 0 表示无限重试
 )
 
-# 发送消息
-msg_id = client.send_message('{"type": "command", ...}')
+# 设置命令处理器
+async def handle_command(cmd_msg: CommandMessage) -> ResultMessage:
+    # 执行命令逻辑
+    result = execute_command(cmd_msg.command, cmd_msg.timeout)
+    return ResultMessage(
+        request_id=cmd_msg.request_id,
+        exit_code=result.exit_code,
+        stdout=result.stdout,
+        stderr=result.stderr,
+        duration_ms=result.duration_ms,
+    )
 
-# 长轮询接收（阻塞 wait_seconds 秒）
-result = client.receive_message(wait_seconds=30)
-if result:
-    receipt_handle, message_body = result
+client.set_command_handler(handle_command)
 
-# 删除消息
-client.delete_message(receipt_handle)
-
-# 窥视消息（不删除、不改变可见性）
-msgs = client.peek_message(num=16)
-for body, msg_id in msgs:
-    print(body)
-
-# Re-send + Delete（单队列核心操作）
-client.resend_and_delete(receipt_handle, message_body)
+# 运行客户端（自动重连）
+await client.run_with_reconnect()
 ```
 
-**关键设计：`resend_and_delete`**
+**关键设计：自动重连机制**
 
-MNS 队列中只有一份消息，当 home-agent 收到不属于自己的消息（如 result）时，需要：
-1. 先将消息重新发回队列（新 message_id）
-2. 再删除自己消费的这份
+WebSocket 客户端内置指数退避重连策略：
+1. 初始延迟 5 秒，每次翻倍
+2. 最大延迟 60 秒
+3. 支持配置最大重连次数
 
-这保证了消息不丢失，同时让消息重新进入队列等待正确的消费者。
+这保证了网络不稳定时自动恢复连接。
 
 ### security.py（安全校验）
 
@@ -186,97 +190,79 @@ logger.log_command(
 
 日志按天分文件，JSONL 格式（每行一条 JSON 记录）。
 
-### heartbeat.py（心跳发送器）
+### main.py（主入口）
 
-位置：`home-agent/heartbeat.py`
+位置：`home-agent/main.py`
+
+异步模式主程序，集成 WebSocket 客户端、命令执行器和安全校验。
 
 ```python
-from heartbeat import HeartbeatSender
+import asyncio
+from main import run_home_agent
+from config import load_config
 
-# 通过 HTTP 上报到 mars-sandbox
-sender = HeartbeatSender(
-    base_url="http://8.213.135.161:8888",
-    api_key="your-api-key",
-    node_id="home-01",
-    interval=60,
-)
-sender.start()   # 启动后台线程，立即发送一次，之后每 60s 发送
-sender.stop()    # 停止（等待线程退出）
-sender.send_once()  # 手动触发一次
+# 加载配置
+config = load_config("config.yaml")
+
+# 运行 home-agent（异步）
+asyncio.run(run_home_agent(config))
 ```
 
 ---
 
 ## 添加新功能
 
-### 示例：添加文件上传功能
+### 示例：添加新功能
 
-#### 1. 定义新消息类型
+#### 1. 在 ws_client.py 中添加消息处理
 
-在 `shared/message_protocol.py` 中：
-
-```python
-@dataclass
-class FileUploadMessage:
-    file_path: str
-    request_id: str = None
-    type: str = "file_upload"
-    chunk_size: int = 65536
-    created_at: str = None
-    
-    # ... 与其他消息类型相同的 to_json/from_dict 方法
-
-def is_file_upload_message(data: dict) -> bool:
-    return data.get("type") == "file_upload"
-```
-
-#### 2. 添加处理逻辑
-
-在 `home-agent/main.py` 中：
+在 `listen()` 方法中添加新的消息类型处理：
 
 ```python
-from shared.message_protocol import is_file_upload_message
-
-def process_message(mns_client, receipt_handle, message_body, config, audit_logger):
-    data = parse_message(message_body)
-    
-    if is_command_message(data):
-        _handle_command(...)
-    elif is_result_message(data):
-        _handle_result_passthrough(...)
-    elif is_heartbeat_message(data):
-        _handle_heartbeat(...)
-    elif is_file_upload_message(data):  # 新增
-        _handle_file_upload(...)        # 新增
-    else:
-        delete_message(...)
+async def listen(self):
+    async for message in self.websocket:
+        data = json.loads(message)
+        msg_type = data.get("type")
+        
+        if msg_type == "command":
+            await self._handle_command(data)
+        elif msg_type == "file_upload":  # 新增
+            await self._handle_file_upload(data)  # 新增
+        elif msg_type == "heartbeat_ack":
+            logger.debug("收到心跳确认")
 ```
 
-#### 3. 创建 Skill 脚本
-
-在 `home-agent-skill/home-hub/scripts/upload_file.py` 中创建上传脚本。
-
-#### 4. 更新 SKILL.md
-
-在 SKILL.md 中添加文件上传的使用说明。
-
-### 示例：添加多节点广播命令
-
-修改 `send_command.py` 支持指定目标节点：
+#### 2. 实现处理逻辑
 
 ```python
-# 在消息中增加 target_node 字段
-message = {
-    "request_id": request_id,
-    "type": "command",
-    "command": args.command,
-    "timeout": args.timeout,
-    "target_node": args.node,  # 新增：目标节点 ID
-    "created_at": datetime.now(timezone.utc).isoformat(),
-}
+async def _handle_file_upload(self, data: dict):
+    """处理文件上传"""
+    file_path = data.get("file_path")
+    # 实现文件上传逻辑
+    pass
 ```
 
-在 `main.py` 中检查 `target_node` 是否匹配当前节点。
+#### 3. 在 mars-sandbox 中添加 API 端点
+
+在 `mars-sandbox/backend/app/routers/` 中添加新的路由：
+
+```python
+# mars-sandbox/backend/app/routers/files.py
+@router.post("/api/files/upload")
+async def upload_file(request: FileUploadRequest):
+    # 转发到对应节点的 WebSocket 连接
+    await websocket_router.send_to_node(
+        request.node_id, 
+        {"type": "file_upload", **request.dict()}
+    )
+    # 等待结果并返回
+```
+
+#### 4. 创建 Skill 脚本
+
+在 `home-agent-skill/home-hub/scripts/upload_file.py` 中创建上传脚本，调用 mars-sandbox HTTP API。
+
+#### 5. 更新 SKILL.md
 
 ---
 
@@ -339,17 +325,18 @@ Skill 路径规范：
 cd orbit-mind
 python3 home-agent/main.py -c config.yaml
 
-# 在另一个终端发送测试命令
+# 在另一个终端发送测试命令（需要同步等待结果）
 cd orbit-mind
-python3 home-agent-skill/home-hub/scripts/send_command.py "echo test" --timeout 10
+python3 home-agent-skill/home-hub/scripts/send_command.py home-server-01 "echo test" --timeout 10
 ```
 
 ### 端到端测试
 
-1. 启动 home-agent（家庭服务器）
-2. 通过 Hermes 发送命令（或直接用 send_command.py）
-3. 用 poll_result.py 轮询结果
-4. 检查审计日志：`cat ~/orbit-mind/logs/commands-$(date +%Y-%m-%d).jsonl`
+1. 启动 mars-sandbox 服务
+2. 启动 home-agent（家庭服务器），等待 WebSocket 连接成功
+3. 通过 Hermes 发送命令（或直接用 send_command.py）
+4. send_command.py 会同步返回执行结果
+5. 检查审计日志：`cat ~/orbit-mind/logs/commands-$(date +%Y-%m-%d).jsonl`
 
 ### 单元测试示例
 
@@ -387,7 +374,7 @@ def test_result_message_exit_codes():
 ```
 feat: 添加文件上传功能
 fix: 修复心跳消息过期清理逻辑
-refactor: 重构 MNS 客户端错误处理
+refactor: 重构 WebSocket 客户端错误处理
 docs: 更新部署文档
 test: 添加消息协议单元测试
 ```

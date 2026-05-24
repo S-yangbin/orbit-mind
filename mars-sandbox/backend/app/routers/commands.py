@@ -92,7 +92,7 @@ async def execute_command(
     
     # 发送命令
     try:
-        await websocket.send(json.dumps(command_msg))
+        await websocket.send_text(json.dumps(command_msg))
         logger.info("命令已发送到节点 %s: request_id=%s", node_id, request_id)
     except Exception as e:
         logger.error("发送命令到节点 %s 失败: %s", node_id, str(e))

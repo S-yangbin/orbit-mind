@@ -6,23 +6,19 @@
 |------|------|
 | Python | 3.8+ |
 | 操作系统 | Linux (Ubuntu/Debian/CentOS) |
-| 阿里云 MNS | 已创建轻量消息队列 |
-| 阿里云 AccessKey | 拥有 MNS 读写权限 |
+| mars-sandbox | 已部署并运行 |
+| WebSocket 连接 | Home Agent 能访问 mars-sandbox 服务 |
 
 ## 前置准备
 
-### 1. 创建阿里云 MNS 队列
+### 1. 部署 mars-sandbox 服务
 
-1. 登录 [阿里云轻量消息队列控制台](https://mns.console.aliyun.com/)
-2. 创建队列，记录以下信息：
-   - Endpoint（如 `https://xxx.mns.cn-qingdao.aliyuncs.com`）
-   - 队列名称（如 `mate-notify`）
+详见下方「部署 mars-sandbox（节点管理服务）」章节。
 
-### 2. 获取阿里云 AccessKey
+### 2. 获取节点密钥
 
-1. 登录 [阿里云 AccessKey 管理](https://ram.console.aliyun.com/manage/ak)
-2. 建议使用 RAM 子账号，仅授予 MNS 权限
-3. 记录 `AccessKey ID` 和 `AccessKey Secret`
+1. 在 mars-sandbox 配置中设置 `NODE_SECRET`（用于 WebSocket 连接认证）
+2. 记录 `MARS_SANDBOX_API_KEY`（用于 HTTP API 访问）
 
 ---
 
@@ -53,7 +49,9 @@ pip3 install -r requirements.txt
 确保 `backend/.env` 中包含 `NODE_API_KEY`：
 
 ```ini
-# Node management (home-agent heartbeat API key)
+# WebSocket 节点认证密钥
+NODE_SECRET=your-node-secret-here
+# HTTP API 认证密钥
 NODE_API_KEY=<your-node-api-key>
 ```
 
@@ -116,12 +114,6 @@ cp ~/orbit-mind/config.example.yaml ~/orbit-mind/home-agent/config.yaml
 编辑 `config.yaml`，填入真实值：
 
 ```yaml
-mns:
-  endpoint: "https://1269672658042534.mns.cn-qingdao.aliyuncs.com"
-  access_key_id: "your-ak-id"
-  access_key_secret: "your-ak-secret"
-  queue_name: "mate-notify"
-
 agent:
   node_id: "home-server-01"    # 节点标识（可选，默认用 hostname）
   max_timeout: 120
@@ -135,6 +127,13 @@ agent:
   working_dir: "~"
   log_file: null
   audit_log_dir: null           # 默认 ~/orbit-mind/logs/
+  
+  # WebSocket 配置
+  mars_sandbox_url: "ws://8.213.135.161:8888"  # mars-sandbox WebSocket 地址
+  node_secret: "your-node-secret-here"          # 节点密钥
+  heartbeat_interval: 60                        # 心跳间隔（秒）
+  reconnect_delay: 5                            # 重连延迟（秒）
+  max_reconnect_attempts: 0                     # 最大重连次数，0 表示无限重试
 ```
 
 ### 步骤 4：手动测试
@@ -149,9 +148,11 @@ python3 home-agent/main.py -c home-agent/config.yaml
 ```
 Home Agent 启动
 节点 ID: home-server-01
-MNS 队列: mate-notify
+mars-sandbox: ws://8.213.135.161:8888
 工作目录: /home/syb
 最大超时: 120s
+WebSocket 连接成功
+节点注册成功
 ```
 
 `Ctrl+C` 停止后，继续配置 systemd。
@@ -178,10 +179,9 @@ mkdir -p ~/orbit-mind/logs
 
 # 创建 .env 文件
 cat > ~/orbit-mind/home-agent/.env << 'EOF'
-MNS_ENDPOINT=https://1269672658042534.mns.cn-qingdao.aliyuncs.com
-ALIBABA_CLOUD_ACCESS_KEY_ID=your-ak-id
-ALIBABA_CLOUD_ACCESS_KEY_SECRET=your-ak-secret
-MNS_QUEUE_NAME=mate-notify
+HOME_AGENT_NODE_ID=home-server-01
+MARS_SANDBOX_URL=ws://8.213.135.161:8888
+HOME_AGENT_NODE_SECRET=your-node-secret-here
 EOF
 chmod 600 ~/orbit-mind/home-agent/.env
 
@@ -217,21 +217,17 @@ scp -r home-agent-skill/home-hub/ root@8.213.135.161:~/.hermes/skills/smart-home
 
 ```bash
 ssh root@8.213.135.161
-pip3 install --break-system-packages aliyun-mns-sdk
+pip3 install --break-system-packages requests
 # 或使用虚拟环境：
-# pip3 install aliyun-mns-sdk
+# pip3 install requests
 ```
 
 ### 步骤 3：配置环境变量
 
-将 MNS 凭证写入 Hermes 的环境变量文件：
+将 mars-sandbox 配置写入 Hermes 的环境变量文件：
 
 ```bash
 cat >> ~/.hermes/.env << 'EOF'
-MNS_ENDPOINT=https://1269672658042534.mns.cn-qingdao.aliyuncs.com
-ALIBABA_CLOUD_ACCESS_KEY_ID=your-ak-id
-ALIBABA_CLOUD_ACCESS_KEY_SECRET=your-ak-secret
-MNS_QUEUE_NAME=mate-notify
 MARS_SANDBOX_URL=http://8.213.135.161:8888
 MARS_SANDBOX_API_KEY=<your-node-api-key>
 EOF
@@ -240,7 +236,7 @@ EOF
 确保 Hermes 配置了环境变量透传：
 
 ```bash
-hermes config set terminal.env_passthrough "MNS_ENDPOINT,ALIBABA_CLOUD_ACCESS_KEY_ID,ALIBABA_CLOUD_ACCESS_KEY_SECRET,MNS_QUEUE_NAME,MARS_SANDBOX_URL,MARS_SANDBOX_API_KEY"
+hermes config set terminal.env_passthrough "MARS_SANDBOX_URL,MARS_SANDBOX_API_KEY"
 ```
 
 ### 步骤 4：重启 Hermes
@@ -256,13 +252,9 @@ hermes restart
 ssh root@8.213.135.161
 cd ~/.hermes/skills/smart-home/home-hub
 
-# 发送测试命令
-python3 scripts/send_command.py "echo 'hello from home server'" --timeout 10
-# 输出: REQUEST_ID=xxx
-
-# 轮询结果
-python3 scripts/poll_result.py "<request_id>" --max-wait 30
-# 输出: {"exit_code": 0, "stdout": "hello from home server\n", ...}
+# 发送测试命令（同步等待结果）
+python3 scripts/send_command.py home-server-01 "echo 'hello from home server'" --timeout 10
+# 直接输出执行结果
 ```
 
 ---
@@ -372,8 +364,8 @@ sudo journalctl -u home-agent -n 50 --no-pager
 
 # 常见错误：
 # 1. 配置文件找不到 → 检查 -c 参数路径
-# 2. MNS 认证失败 → 检查 .env 文件中的 AK/SK
-# 3. 队列不存在 → 检查 MNS 控制台队列是否创建
+# 2. WebSocket 连接失败 → 检查 mars-sandbox URL 和 node_secret
+# 3. 节点注册失败 → 检查 node_secret 是否正确
 ```
 
 ### 命令执行无响应
@@ -385,39 +377,44 @@ sudo systemctl status home-agent
 # 2. 查看最近的日志
 sudo journalctl -u home-agent -n 20 --no-pager
 
-# 3. 检查网络连接（需要能访问 MNS endpoint）
-curl -s https://1269672658042534.mns.cn-qingdao.aliyuncs.com
+# 3. 检查 WebSocket 连接
+sudo journalctl -u home-agent | grep -i websocket
 
-# 4. 在 Hermes 服务器手动测试 MNS 连接
-python3 scripts/send_command.py "echo test" --timeout 10
+# 4. 在 Hermes 服务器手动测试
+python3 scripts/send_command.py home-server-01 "echo test" --timeout 10
 ```
 
-### 心跳不更新
+### 节点离线
 
 ```bash
 # 检查 home-agent 是否运行
 sudo systemctl status home-agent
 
-# 查看心跳相关日志
-sudo journalctl -u home-agent | grep -i heartbeat
+# 查看 WebSocket 连接日志
+sudo journalctl -u home-agent | grep -i -E "websocket|connect|heartbeat"
 
 # 检查 mars-sandbox 是否可访问
 curl -s http://8.213.135.161:8888/health
 
-# 重启服务让心跳重新发送
+# 重启服务重新建立 WebSocket 连接
 sudo systemctl restart home-agent
 ```
 
-### 队列消息堆积
+### WebSocket 连接断开
 
-如果队列中有大量消息未被消费：
+如果 Home Agent 频繁断线重连：
 
 ```bash
 # 检查 home-agent 状态
 sudo systemctl status home-agent
 
-# 如果 agent 正常但消息仍堆积，可能是 re-send 循环
-# 重启 agent 清理状态
+# 查看重连日志
+sudo journalctl -u home-agent | grep -i reconnect
+
+# 检查网络稳定性
+ping 8.213.135.161
+
+# 重启服务
 sudo systemctl restart home-agent
 ```
 
@@ -459,9 +456,10 @@ hermes restart
 
 ## 安全建议
 
-1. **使用 RAM 子账号**：不要使用主账号 AccessKey，创建专用 RAM 子账号并只授予 MNS 权限
-2. **定期轮换 AK/SK**：建议每 90 天轮换一次
+1. **使用强密钥**：NODE_SECRET 和 API_KEY 应使用强随机字符串
+2. **定期轮换密钥**：建议每 90 天轮换一次 NODE_SECRET 和 API_KEY
 3. **配置白名单**：生产环境建议启用命令白名单模式
 4. **审计日志监控**：定期检查 `~/orbit-mind/logs/` 中的审计日志
 5. **限制 .env 权限**：确保 `.env` 文件权限为 `600`
 6. **启用 systemd 安全加固**：`home-agent.service` 中已配置，不要随意移除
+7. **防火墙配置**：确保 mars-sandbox 端口（8888）仅对可信 IP 开放

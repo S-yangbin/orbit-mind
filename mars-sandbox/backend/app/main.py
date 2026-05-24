@@ -17,7 +17,7 @@ from .scanner import scan_directories
 from .ws.router import router as ws_router
 
 # Frontend dist directory
-FRONTEND_DIST = Path(__file__).parent.parent.parent / "frontend" / "dist"
+FRONTEND_DIST = Path(__file__).parent.parent / "frontend" / "dist"
 
 # Background scheduler
 _scheduler_thread = None
