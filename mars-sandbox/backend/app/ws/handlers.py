@@ -31,7 +31,7 @@ async def handle_websocket_connection(websocket: ServerConnection, node_id: str,
     """
     # 验证密钥
     if not secret or secret != settings.NODE_API_KEY:
-        await websocket.send(json.dumps({
+        await websocket.send_text(json.dumps({
             "type": "error",
             "error_code": "AUTH_FAILED",
             "message": "认证失败: 密钥错误",
@@ -46,11 +46,11 @@ async def handle_websocket_connection(websocket: ServerConnection, node_id: str,
     try:
         # 等待注册消息
         try:
-            message = await asyncio.wait_for(websocket.recv(), timeout=10)
+            message = await asyncio.wait_for(websocket.receive_text(), timeout=10)
             data = json.loads(message)
             
             if data.get("type") != "register":
-                await websocket.send(json.dumps({
+                await websocket.send_text(json.dumps({
                     "type": "error",
                     "error_code": "INVALID_MESSAGE",
                     "message": "第一条消息必须是注册消息",
@@ -74,8 +74,9 @@ async def handle_websocket_connection(websocket: ServerConnection, node_id: str,
         _update_node_status(node_id, "online")
         
         # 主循环:处理消息
-        async for message in websocket:
+        while True:
             try:
+                message = await websocket.receive_text()
                 data = json.loads(message)
                 msg_type = data.get("type")
                 
@@ -113,7 +114,7 @@ async def _handle_register(websocket: ServerConnection, node_id: str, data: Dict
         "message": "注册成功",
         "server_time": datetime.utcnow().isoformat(),
     }
-    await websocket.send(json.dumps(ack))
+    await websocket.send_text(json.dumps(ack))
 
 
 async def _handle_heartbeat(node_id: str, data: Dict[str, Any]):

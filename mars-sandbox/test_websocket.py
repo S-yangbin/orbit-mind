@@ -19,9 +19,9 @@ except ImportError:
 
 async def test_websocket_connection():
     """测试WebSocket连接"""
-    server_url = "ws://8.213.135.161:8888"
+    server_url = "ws://localhost:8888"
     node_id = "test-node-001"
-    secret = "change-me-node-api-key"  # 修改为实际的NODE_API_KEY
+    secret = "<your-node-api-key>"  # 使用.env中的NODE_API_KEY
     
     url = f"{server_url}/ws/agent/{node_id}?secret={secret}"
     
@@ -85,8 +85,8 @@ async def test_http_api():
     """测试HTTP API发送命令"""
     import requests
     
-    server_url = "http://8.213.135.161:8888"
-    api_key = "change-me-node-api-key"  # 修改为实际的NODE_API_KEY
+    server_url = "http://localhost:8888"
+    api_key = "<your-node-api-key>"  # 使用.env中的NODE_API_KEY
     
     print(f"\n测试HTTP API: {server_url}/api/commands")
     

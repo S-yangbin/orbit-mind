@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Header, status
 from pydantic import BaseModel
 
 from ..config import settings
-from .connection_pool import pool
+from ..ws.connection_pool import pool
 
 logger = logging.getLogger(__name__)
 
