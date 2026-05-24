@@ -12,6 +12,7 @@ export interface Page {
   thumbnail: string | null;
   entry_file: string;
   is_customized: number;
+  category: string;
   created_at: string;
   updated_at: string;
   synced_at: string;

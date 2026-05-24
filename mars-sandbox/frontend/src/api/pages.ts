@@ -4,6 +4,7 @@ import type { PageListResponse, Page } from "../types";
 export const fetchPages = async (params: {
   q?: string;
   tag?: string;
+  category?: string;
   sort?: string;
   order?: string;
   page?: number;
@@ -20,7 +21,7 @@ export const fetchPage = async (id: number): Promise<Page> => {
 
 export const updatePage = async (
   id: number,
-  body: { title?: string; description?: string; tags?: string[] }
+  body: { title?: string; description?: string; tags?: string[]; category?: string }
 ): Promise<Page> => {
   const { data } = await api.put<Page>(`/api/pages/${id}`, body);
   return data;

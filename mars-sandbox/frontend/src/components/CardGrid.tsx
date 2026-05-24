@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Row, Col, Input, Tag, Pagination, Spin, Empty, Select, Space, Button } from "antd";
+import { Row, Col, Input, Tag, Pagination, Spin, Empty, Select, Space, Button, Segmented } from "antd";
 import { ReloadOutlined, SearchOutlined } from "@ant-design/icons";
 import { ProjectCard } from "./ProjectCard";
 import { EditProjectModal } from "./EditProjectModal";
@@ -7,6 +7,11 @@ import { ScanButton } from "./ScanButton";
 import { fetchPages } from "../api/pages";
 import { fetchTags } from "../api/tags";
 import type { Page, Tag as TagType } from "../types";
+
+const CATEGORY_OPTIONS = [
+  { label: '工作', value: 'work' },
+  { label: '生活', value: 'life' },
+];
 
 export function CardGrid() {
   const [pages, setPages] = useState<Page[]>([]);
@@ -16,6 +21,7 @@ export function CardGrid() {
   const [currentPage, setCurrentPage] = useState(1);
   const [search, setSearch] = useState("");
   const [selectedTag, setSelectedTag] = useState<string | undefined>();
+  const [selectedCategory, setSelectedCategory] = useState<string>("work");
   const [editPage, setEditPage] = useState<Page | null>(null);
 
   const loadData = useCallback(async () => {
@@ -25,6 +31,7 @@ export function CardGrid() {
         fetchPages({
           q: search || undefined,
           tag: selectedTag,
+          category: selectedCategory,
           page: currentPage,
           page_size: 20,
           sort: "updated_at",
@@ -39,7 +46,7 @@ export function CardGrid() {
       console.error("Failed to load data:", e);
     }
     setLoading(false);
-  }, [currentPage, search, selectedTag]);
+  }, [currentPage, search, selectedTag, selectedCategory]);
 
   useEffect(() => {
     loadData();
@@ -51,6 +58,19 @@ export function CardGrid() {
 
   return (
     <div>
+      {/* Category tabs */}
+      <div style={{ marginBottom: 24 }}>
+        <Segmented
+          options={CATEGORY_OPTIONS}
+          value={selectedCategory}
+          onChange={(v) => {
+            setSelectedCategory(v as string);
+            setCurrentPage(1);
+          }}
+          size="large"
+        />
+      </div>
+
       {/* Top bar */}
       <div style={{
         display: "flex",

@@ -251,6 +251,7 @@ def _sync_page(db: Session, dir_path: Path, slug: str, results: dict):
             entry_file=entry_file,
             content_hash=dir_hash,
             synced_at=datetime.utcnow(),
+            category="work",
         )
         db.add(page)
         db.flush()  # Get page.id

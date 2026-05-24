@@ -14,6 +14,7 @@ router = APIRouter(prefix="/api/pages", tags=["pages"])
 def list_pages(
     q: Optional[str] = Query(None),
     tag: Optional[str] = Query(None),
+    category: Optional[str] = Query(None),
     sort: Optional[str] = Query("updated_at"),
     order: Optional[str] = Query("desc"),
     page: int = Query(1, ge=1),
@@ -38,6 +39,10 @@ def list_pages(
     if tag:
         query = query.join(Page.tags).join(PageTag.tag).filter(Tag.name == tag)
 
+    # Filter by category
+    if category:
+        query = query.filter(Page.category == category)
+
     # Sort
     sort_field = getattr(Page, sort, Page.updated_at)
     if order.lower() == "asc":
@@ -60,6 +65,7 @@ def list_pages(
             "thumbnail": p.thumbnail,
             "entry_file": p.entry_file,
             "is_customized": p.is_customized,
+            "category": p.category,
             "created_at": p.created_at,
             "updated_at": p.updated_at,
             "synced_at": p.synced_at,
@@ -83,6 +89,7 @@ def get_page(page_id: int, db: Session = Depends(get_db), user=Depends(current_u
         "thumbnail": page.thumbnail,
         "entry_file": page.entry_file,
         "is_customized": page.is_customized,
+        "category": page.category,
         "created_at": page.created_at,
         "updated_at": page.updated_at,
         "synced_at": page.synced_at,
@@ -110,6 +117,9 @@ def update_page(
         page.custom_description = body.description
         page.is_customized = 1
 
+    if body.category is not None:
+        page.category = body.category
+
     # Update tags
     if body.tags is not None:
         # Remove existing tags
@@ -136,6 +146,7 @@ def update_page(
         "thumbnail": page.thumbnail,
         "entry_file": page.entry_file,
         "is_customized": page.is_customized,
+        "category": page.category,
         "tags": [{"id": pt.tag.id, "name": pt.tag.name} for pt in page.tags],
     }
 

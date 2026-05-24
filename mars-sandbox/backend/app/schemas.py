@@ -28,6 +28,7 @@ class PageBase(BaseModel):
     description: Optional[str] = None
     thumbnail: Optional[str] = None
     entry_file: str = "index.html"
+    category: str = "work"
 
 
 class PageCreate(PageBase):
@@ -38,6 +39,7 @@ class PageUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
     tags: Optional[List[str]] = None
+    category: Optional[str] = None
 
 
 class PageInDB(PageBase):
@@ -51,6 +53,7 @@ class PageInDB(PageBase):
     synced_at: datetime
     scanned_title: Optional[str] = None
     scanned_description: Optional[str] = None
+    category: str = "work"
     tags: List[TagBase] = []
 
     class Config:

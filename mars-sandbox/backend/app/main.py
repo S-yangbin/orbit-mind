@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 
 from .config import settings
-from .database import init_db, SessionLocal
+from .database import init_db, SessionLocal, engine
 from .auth import get_current_user
 from .routers import auth, pages, tags, scan, nodes, commands
 from .scanner import scan_directories
@@ -24,6 +24,18 @@ FRONTEND_DIST = Path(__file__).parent.parent / "frontend" / "dist"
 
 # Background scheduler
 _scheduler_thread = None
+
+
+def _migrate_db():
+    """Run database migrations for new columns."""
+    from sqlalchemy import text, inspect
+    inspector = inspect(engine)
+    columns = [col['name'] for col in inspector.get_columns('pages')]
+    if 'category' not in columns:
+        with engine.connect() as conn:
+            conn.execute(text("ALTER TABLE pages ADD COLUMN category VARCHAR(32) NOT NULL DEFAULT 'work'"))
+            conn.commit()
+        logger.info("Migration: added 'category' column to pages table")
 
 
 def _start_background_scan():
@@ -45,6 +57,7 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting up...")
     init_db()
+    _migrate_db()
     logger.info("Database initialized.")
 
     # Ensure directories exist

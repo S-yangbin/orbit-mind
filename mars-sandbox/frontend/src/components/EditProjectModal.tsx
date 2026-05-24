@@ -4,6 +4,11 @@ import { fetchTags, createTag } from "../api/tags";
 import { updatePage } from "../api/pages";
 import type { Page, Tag } from "../types";
 
+const CATEGORY_OPTIONS = [
+  { label: '工作', value: 'work' },
+  { label: '生活', value: 'life' },
+];
+
 interface Props {
   page: Page;
   visible: boolean;
@@ -22,6 +27,7 @@ export function EditProjectModal({ page, visible, onClose, onSave }: Props) {
         title: page.title,
         description: page.description || "",
         tags: page.tags.map((t) => t.name),
+        category: page.category || "work",
       });
       fetchTags().then(setTags).catch(() => {});
     }
@@ -35,6 +41,7 @@ export function EditProjectModal({ page, visible, onClose, onSave }: Props) {
         title: values.title,
         description: values.description,
         tags: values.tags || [],
+        category: values.category,
       });
       message.success("保存成功");
       onSave();
@@ -80,6 +87,9 @@ export function EditProjectModal({ page, visible, onClose, onSave }: Props) {
         </Form.Item>
         <Form.Item name="description" label="描述">
           <Input.TextArea rows={3} placeholder="页面描述" />
+        </Form.Item>
+        <Form.Item name="category" label="分组">
+          <Select options={CATEGORY_OPTIONS} />
         </Form.Item>
         <Form.Item name="tags" label="标签">
           <Select

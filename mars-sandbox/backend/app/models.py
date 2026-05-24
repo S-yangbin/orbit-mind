@@ -23,6 +23,7 @@ class Page(Base):
     custom_description = Column(Text, nullable=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    category = Column(String(32), nullable=False, default="work", server_default="work", index=True)
     synced_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     scanned_title = Column(String(255), nullable=True)
     scanned_description = Column(Text, nullable=True)
