@@ -1,0 +1,5 @@
+# Test artifacts
+test_mars_sandbox.db
+htmlcov/
+.pytest_cache/
+.coverage
