@@ -15,6 +15,7 @@ from pydantic import BaseModel
 
 from ..config import settings
 from ..ws.connection_pool import pool
+from ..utils.timezone import beijing_now
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +88,7 @@ async def execute_command(
         "command": command,
         "timeout": timeout,
         "source": "hermes",
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": beijing_now().isoformat(),
     }
     
     # 发送命令

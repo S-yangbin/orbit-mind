@@ -76,13 +76,21 @@ class WebSocketClient:
         base_path = f"/ws/agent/{self.node_id}"
         params = urlencode({"secret": self.node_secret})
         
-        # 判断协议
-        if self.server_url.startswith("wss://"):
-            return f"wss://{self.server_url[6:]}{base_path}?{params}"
-        elif self.server_url.startswith("ws://"):
-            return f"ws://{self.server_url[5:]}{base_path}?{params}"
-        else:
-            return f"ws://{self.server_url}{base_path}?{params}"
+        # 去除协议前缀，获取 host:port 部分
+        server_url = self.server_url
+        proto = "ws"
+        if server_url.startswith("wss://"):
+            server_url = server_url[6:]
+            proto = "wss"
+        elif server_url.startswith("https://"):
+            server_url = server_url[8:]
+            proto = "wss"
+        elif server_url.startswith("ws://"):
+            server_url = server_url[5:]
+        elif server_url.startswith("http://"):
+            server_url = server_url[7:]
+        
+        return f"{proto}://{server_url}{base_path}?{params}"
     
     async def connect(self) -> bool:
         """

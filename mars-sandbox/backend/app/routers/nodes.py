@@ -11,6 +11,7 @@ from ..database import get_db
 from ..dependencies import require_auth
 from ..models import Node
 from ..schemas import NodeHeartbeatRequest, NodeResponse, NodeListResponse
+from ..utils.timezone import beijing_now
 
 router = APIRouter(prefix="/api/nodes", tags=["nodes"])
 
@@ -59,7 +60,7 @@ def _compute_status(node: Node, stale_seconds: int) -> str:
     """Compute real-time status based on last_heartbeat_at."""
     if not node.last_heartbeat_at:
         return "offline"
-    age = (datetime.utcnow() - node.last_heartbeat_at).total_seconds()
+    age = (beijing_now() - node.last_heartbeat_at).total_seconds()
     return "online" if age <= stale_seconds else "offline"
 
 
@@ -95,7 +96,7 @@ async def heartbeat(
         node.version = payload.version
         node.uptime_seconds = payload.uptime_seconds
         node.status = "online"
-        node.last_heartbeat_at = datetime.utcnow()
+        node.last_heartbeat_at = beijing_now()
     else:
         node = Node(
             node_id=payload.node_id,
@@ -105,7 +106,7 @@ async def heartbeat(
             version=payload.version,
             uptime_seconds=payload.uptime_seconds,
             status="online",
-            last_heartbeat_at=datetime.utcnow(),
+            last_heartbeat_at=beijing_now(),
         )
         db.add(node)
 

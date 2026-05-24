@@ -6,9 +6,12 @@
 import json
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional
+
+# 北京时间时区 (UTC+8)
+BEIJING_TZ = timezone(timedelta(hours=8))
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +36,7 @@ class AuditLogger:
 
     def _get_log_file(self) -> Path:
         """获取当天的日志文件路径"""
-        date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        date_str = datetime.now(BEIJING_TZ).strftime("%Y-%m-%d")
         return self.log_dir / f"commands-{date_str}.jsonl"
 
     def log_command(
@@ -61,7 +64,7 @@ class AuditLogger:
             stderr_preview: stderr 前 500 字符预览
         """
         record = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(BEIJING_TZ).isoformat(),
             "request_id": request_id,
             "command": command,
             "exit_code": exit_code,

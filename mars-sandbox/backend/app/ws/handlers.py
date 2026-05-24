@@ -7,7 +7,7 @@ import asyncio
 import json
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from typing import Dict, Any
 from starlette.websockets import WebSocketDisconnect
 from websockets.asyncio.server import ServerConnection
@@ -16,9 +16,10 @@ from ..config import settings
 from ..database import SessionLocal
 from ..models import Node
 from ..routers.commands import cache_result
+from ..utils.timezone import beijing_now
 from .connection_pool import pool
 
-logger = logging.getLogger(__name__)
+# 北京时间时区已在 utils.timezone 中定义
 
 
 async def handle_websocket_connection(websocket: ServerConnection, node_id: str, secret: str):
@@ -36,7 +37,7 @@ async def handle_websocket_connection(websocket: ServerConnection, node_id: str,
             "type": "error",
             "error_code": "AUTH_FAILED",
             "message": "认证失败: 密钥错误",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": beijing_now().isoformat(),
         }))
         await websocket.close()
         logger.warning("节点 %s 认证失败", node_id)
@@ -55,7 +56,7 @@ async def handle_websocket_connection(websocket: ServerConnection, node_id: str,
                     "type": "error",
                     "error_code": "INVALID_MESSAGE",
                     "message": "第一条消息必须是注册消息",
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": beijing_now().isoformat(),
                 }))
                 await websocket.close()
                 return
@@ -116,7 +117,7 @@ async def _handle_register(websocket: ServerConnection, node_id: str, data: Dict
         "type": "register_ack",
         "status": "success",
         "message": "注册成功",
-        "server_time": datetime.utcnow().isoformat(),
+        "server_time": beijing_now().isoformat(),
     }
     await websocket.send_text(json.dumps(ack))
 
@@ -162,7 +163,7 @@ def _update_node_status(node_id: str, status: str):
             if node:
                 node.status = status
                 if status == "online":
-                    node.last_heartbeat_at = datetime.utcnow()
+                    node.last_heartbeat_at = beijing_now()
                 db.commit()
                 logger.debug("节点 %s 状态更新为: %s", node_id, status)
         finally:

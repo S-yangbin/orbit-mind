@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .models import Page, Tag, PageTag
 from .database import SessionLocal
+from .utils.timezone import beijing_now
 
 logger = logging.getLogger(__name__)
 
@@ -143,7 +144,7 @@ def scan_directories() -> dict:
         return {"status": "already_running"}
 
     with _scan_lock:
-        _last_scan_at = datetime.utcnow()
+        _last_scan_at = beijing_now()
         results = {"new": 0, "updated": 0, "unchanged": 0, "removed": 0, "errors": 0}
 
         try:
@@ -210,7 +211,7 @@ def _sync_page(db: Session, dir_path: Path, slug: str, results: dict):
         # Check if content changed
         if existing.content_hash == dir_hash:
             results["unchanged"] += 1
-            existing.synced_at = datetime.utcnow()
+            existing.synced_at = beijing_now()
             return
 
         # Content changed
@@ -250,7 +251,7 @@ def _sync_page(db: Session, dir_path: Path, slug: str, results: dict):
             thumbnail=thumb,
             entry_file=entry_file,
             content_hash=dir_hash,
-            synced_at=datetime.utcnow(),
+            synced_at=beijing_now(),
             category="work",
         )
         db.add(page)
