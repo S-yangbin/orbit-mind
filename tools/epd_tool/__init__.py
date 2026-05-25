@@ -2,4 +2,7 @@
 
 __version__ = "2.0.0"
 
-from .cli import main, app, EPDClient, EPD_MODELS, Cmd
+from .cli import main
+from .commands import app
+from .ble_client import EPDClient
+from .constants import EPD_MODELS, Cmd
