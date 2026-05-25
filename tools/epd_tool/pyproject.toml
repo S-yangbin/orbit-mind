@@ -52,7 +52,7 @@ Homepage = "https://github.com/tsl0922/EPD-nRF5"
 Repository = "https://github.com/tsl0922/EPD-nRF5"
 
 [tool.setuptools.packages.find]
-where = ["."]
+where = [".."]
 include = ["epd_tool*"]
 
 [tool.setuptools.package-data]
