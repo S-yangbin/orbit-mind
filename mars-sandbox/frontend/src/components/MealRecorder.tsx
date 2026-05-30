@@ -33,14 +33,12 @@ const { Text, Title } = Typography;
 const MEAL_OPTIONS = [
   { value: "breakfast", label: "早餐" },
   { value: "lunch", label: "午餐" },
-  { value: "dinner", label: "晚餐" },
 ];
 
 function inferMealType(): string {
   const h = new Date().getHours();
   if (h < 10) return "breakfast";
-  if (h < 15) return "lunch";
-  return "dinner";
+  return "lunch";
 }
 
 export function MealRecorder() {

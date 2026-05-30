@@ -44,9 +44,11 @@ def execute_command(
     start_time = time.time()
     
     try:
-        # 使用 bash -il (交互式 + 登录 shell) 执行，同时加载 .bashrc 和 .profile / .bash_profile
+        # 使用 bash -l (登录 shell) 执行，加载 .profile / .bash_profile
+        # 注意：去掉 -i 避免非 TTY 环境下 bash 输出 "cannot set terminal process group"
+        # 和 "no job control in this shell" 等噪声到 stderr
         result = subprocess.run(
-            ["/bin/bash", "-il", "-c", command],
+            ["/bin/bash", "-l", "-c", command],
             capture_output=True,
             text=True,
             timeout=effective_timeout,
@@ -60,11 +62,22 @@ def execute_command(
             result.returncode, duration_ms
         )
         
+        # 过滤掉 bash 在非 TTY 环境下的常见警告
+        _BASH_NOISE_PREFIXES = (
+            "bash: cannot set terminal process group",
+            "bash: no job control in this shell",
+        )
+        stderr_lines = result.stderr.splitlines() if result.stderr else []
+        filtered_stderr = "\n".join(
+            line for line in stderr_lines
+            if not line.startswith(_BASH_NOISE_PREFIXES)
+        )
+        
         return ResultMessage(
             request_id=request_id,
             exit_code=result.returncode,
             stdout=result.stdout[-64000:] if result.stdout else "",  # 截断过长输出
-            stderr=result.stderr[-16000:] if result.stderr else "",
+            stderr=filtered_stderr[-16000:] if filtered_stderr else "",
             duration_ms=duration_ms,
         )
         

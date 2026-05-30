@@ -20,7 +20,6 @@ import {
   AppstoreOutlined,
   SyncOutlined,
   SunOutlined,
-  MoonOutlined,
   CloudOutlined,
 } from "@ant-design/icons";
 import type { MealLog, MealHistoryStats } from "../types";
@@ -32,12 +31,10 @@ const { Text, Title } = Typography;
 const MEAL_LABELS: Record<string, string> = {
   breakfast: "早餐",
   lunch: "午餐",
-  dinner: "晚餐",
 };
 const MEAL_ICONS: Record<string, React.ReactNode> = {
   breakfast: <CloudOutlined style={{ color: "#f59e0b" }} />,
   lunch: <SunOutlined style={{ color: "#f59e0b" }} />,
-  dinner: <MoonOutlined style={{ color: "#8b5cf6" }} />,
 };
 
 export function MealHistory() {

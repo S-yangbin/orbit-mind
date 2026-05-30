@@ -487,6 +487,11 @@ def send_image(
                 fit=fit,
                 slot=slot,
             )
+            # 与 HTML 版一致：有失败的块数时警告用户
+            if result.get("failed_chunks", 0) > 0:
+                fc = result["failed_chunks"]
+                if not json_output:
+                    typer.echo(f"警告: 发送完成，但有 {fc} 块数据发送失败，如果屏幕显示不正常，请重新发送！")
             output_result(result, json_output)
 
             # 默认发送完成后将设备进入深度休眠，防止 WDT 复位导致画面被日历覆盖

@@ -470,7 +470,7 @@ async def generate_plan(
     # Phase 1: Pre-create/find all dishes and commit to get IDs
     all_dishes = {}  # name -> Dish object
     for day_entry in plan_data.get("days", []):
-        for meal_type in ["lunch", "dinner"]:
+        for meal_type in ["lunch"]:
             for dish_info in day_entry.get("meals", {}).get(meal_type, []):
                 name = dish_info.get("name", "").strip()
                 if name and name not in all_dishes:
@@ -514,7 +514,7 @@ async def generate_plan(
         if plan_obj is None:
             continue
         meals = day_entry.get("meals", {})
-        for meal_type in ["lunch", "dinner"]:
+        for meal_type in ["lunch"]:
             dish_list = meals.get(meal_type, [])
             slot_key = (plan_obj.id, day_date, meal_type)
             if slot_key not in seen_dish_ids:

@@ -138,7 +138,6 @@ def generate_monthly_weekend_plan(
 
     Only generates:
     - Saturday & Sunday LUNCH: full family meals (rich, 4-5 dishes + soup)
-    - Saturday & Sunday DINNER: child-friendly meals only
 
     Args:
         members: List of family member dicts
@@ -162,7 +161,6 @@ def generate_monthly_weekend_plan(
     # Build family info
     family_lines = []
     allergies_all = []
-    child_prefs = ""
     for m in members:
         prefs = m.get("preferences") or {}
         likes = ", ".join(prefs.get("likes", [])) or "无特别偏好"
@@ -179,11 +177,6 @@ def generate_monthly_weekend_plan(
             line += f"，备注: {note}"
         family_lines.append(line)
 
-        if m["role"] == "child":
-            child_prefs = f"喜欢 [{likes}]，不喜欢 [{dislikes}]"
-            if note:
-                child_prefs += f"，{note}"
-
         allergies = m.get("allergies") or []
         if allergies:
             allergies_all.append(f"{m['name']}: {', '.join(allergies)}")
@@ -198,7 +191,7 @@ def generate_monthly_weekend_plan(
         for d in weekend_dates
     )
 
-    prompt = f"""你是一个家庭营养顾问。请为以下家庭制定未来一个月的周末菜单。
+    prompt = f"""你是一个家庭营养顾问。请为以下家庭制定未来一个月的周末午餐菜单。
 
 ## 需要规划的日期
 {dates_display}
@@ -208,9 +201,6 @@ def generate_monthly_weekend_plan(
 
 ## 过敏/忌口
 {allergies_info}
-
-## 孩子(6岁)的口味偏好
-{child_prefs}
 
 ## 最近吃过的菜（尽量避免重复）
 {recent_info}
@@ -222,13 +212,6 @@ def generate_monthly_weekend_plan(
 - 考虑全家人口味，荤素搭配合理
 - 至少1道绿叶蔬菜
 - 菜品以家常菜为主
-
-### 晚餐（只给孩子吃，1人份）
-- 每顿 1 菜 1 汤 或 1 菜 1 主食，分量适合6岁孩子
-- 必须清淡、少油少盐、不辣
-- 营养均衡，有蛋白质和蔬菜
-- 做法简单，适合单独给孩子做
-- 例如：番茄鸡蛋面、虾仁蒸蛋+米饭、肉末豆腐+青菜汤等
 
 ### 通用要求
 - 同一道菜在整个月内最多出现1次
@@ -248,10 +231,6 @@ def generate_monthly_weekend_plan(
           {{"name":"番茄炒蛋","category":"素菜","recipe":"鸡蛋炒散番茄切块炒出汁加盐糖"}},
           {{"name":"凉拌黄瓜","category":"凉菜","recipe":"黄瓜拍碎加蒜末醋生抽辣椒油拌匀"}},
           {{"name":"紫菜蛋花汤","category":"汤","recipe":"紫菜撕碎水开后打入蛋花加盐调味"}}
-        ],
-        "dinner": [
-          {{"name":"虾仁蒸蛋","category":"荤菜","recipe":"鸡蛋打散加温水虾仁上锅蒸10分钟淋生抽"}},
-          {{"name":"米饭","category":"主食","recipe":"大米洗净加水蒸熟"}}
         ]
       }}
     }}

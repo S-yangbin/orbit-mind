@@ -579,19 +579,33 @@ class EPDClient:
         no_reply_count = self.interleaved
 
         start = time.time()
-        total_chunks = 0
+        failed_chunks = 0  # 与 HTML 版一致：统计发送失败的块数，不中断传输
         _send_retry = 0
         _max_send_retry = 2
 
         while True:
             try:
-                # 槽位模式: SET_SLOT [0, slot] 保存图片到 flash
+                # 与 HTML 版 Vt() 完全一致：
+                # 1. SET_SLOT（槽位模式，在 INIT 之前）
+                # 2. INIT（无 payload）→ 设备回复配置
+                # 3. 发送图片数据
+                # 4. REFRESH
+                
+                # 槽位模式：与 HTML 版 ta() 一致，SET_SLOT 在 INIT 之前
+                # SET_SLOT 失败不阻塞流程（HTML 版 return false 但继续调用 Vt）
                 if slot is not None:
-                    await self._write_safe(bytes([Cmd.SET_SLOT, 0, slot]), with_response=True)
-                    # 升级版网页: SET_SLOT 后再发一次 INIT，重新初始化显示状态
-                    init_payload = bytes([Cmd.INIT, driver_id]) if driver_id is not None else bytes([Cmd.INIT])
-                    await self._write_safe(init_payload, with_response=True)
-                    await asyncio.sleep(0.5)
+                    try:
+                        await self._write_safe(bytes([Cmd.SET_SLOT, 0, slot]), with_response=True)
+                    except Exception:
+                        pass  # SET_SLOT 失败不影响图片发送
+
+                # 与 HTML 版 Vt() 一致：发送 INIT（无 payload）
+                await self.write_cmd(Cmd.INIT)
+                # 与 HTML 版一致：等待 200ms + 收集 INIT 响应通知
+                await asyncio.sleep(0.2)
+                # 处理 INIT 后可能到达的通知
+                await self._drain_notifications()
+                await asyncio.sleep(0.3)
 
                 # 发送图片数据到显示 RAM
                 if mode == "3color" and is_uc8159:
@@ -600,29 +614,25 @@ class EPDClient:
                     rw_data = processed[half:]
                     pixel_count = w * h
                     combined = convert_uc8159(bw_data, rw_data, pixel_count)
-                    total_chunks = await self._write_image_chunks(combined, chunk_size, no_reply_count, "bw")
+                    failed_chunks = await self._write_image_chunks(combined, chunk_size, no_reply_count, "bw")
                 elif mode == "3color":
                     half = len(processed) // 2
                     bw_data = processed[:half]
                     rw_data = processed[half:]
-                    n1 = await self._write_image_chunks(bw_data, chunk_size, no_reply_count, "bw")
-                    n2 = await self._write_image_chunks(rw_data, chunk_size, no_reply_count, "red")
-                    total_chunks = n1 + n2
+                    f1 = await self._write_image_chunks(bw_data, chunk_size, no_reply_count, "bw")
+                    f2 = await self._write_image_chunks(rw_data, chunk_size, no_reply_count, "red")
+                    failed_chunks = f1 + f2
                 elif mode == "bw" and is_uc8159:
                     pixel_count = w * h
                     bw_len = (pixel_count + 7) // 8
                     empty_rw = bytes(bw_len) if len(processed) < bw_len else bytes(len(processed))
                     combined = convert_uc8159(processed[:bw_len], empty_rw, pixel_count)
-                    total_chunks = await self._write_image_chunks(combined, chunk_size, no_reply_count, "bw")
+                    failed_chunks = await self._write_image_chunks(combined, chunk_size, no_reply_count, "bw")
                 else:
-                    total_chunks = await self._write_image_chunks(processed, chunk_size, no_reply_count, "bw")
+                    failed_chunks = await self._write_image_chunks(processed, chunk_size, no_reply_count, "bw")
 
-                # 等待图片数据写入完成
-                await asyncio.sleep(1)
-
-                # 发送 REFRESH 触发屏幕刷新（与升级版网页一致）
-                # Linux BlueZ: 与前图片数据保持一致的 write 模式，避免模式切换断连
-                await self._write(bytes([Cmd.REFRESH]), with_response=False)
+                # 与 HTML 版一致：REFRESH 使用 writeWithResponse
+                await self._write(bytes([Cmd.REFRESH]), with_response=True)
 
                 break  # 全部成功（图片+刷新），退出重试循环
             except Exception as e:
@@ -638,9 +648,9 @@ class EPDClient:
                     import typer
                     typer.echo(f"图片发送中断线，正在重连并重试 (第{_send_retry}次)...")
                     await self.reconnect()
-                    # 重连后发送 INIT 重新初始化（必须带 driver_id）
-                    init_payload = bytes([driver_id]) if driver_id is not None else b""
-                    await self._write_safe(bytes([Cmd.INIT]) + init_payload, with_response=True)
+                    # 重连后重新 INIT（必须带 driver_id，使设备知道使用哪个显示驱动）
+                    init_payload = bytes([self._init_driver_id]) if self._init_driver_id is not None else b""
+                    await self.write_cmd(Cmd.INIT, init_payload)
                     await asyncio.sleep(0.5)
                     # 重新获取 MTU (可能更新)
                     chunk_size = self.device_mtu - 2
@@ -665,30 +675,38 @@ class EPDClient:
             "fit": fit,
             "process_time": f"{process_time:.2f}s",
             "send_time": f"{send_time:.2f}s",
-            "total_chunks": total_chunks,
+            "failed_chunks": failed_chunks,
             "refresh_wait": f"{refresh_wait:.0f}s",
         }
         if slot is not None:
             result["slot"] = slot
         return result
 
+    async def _drain_notifications(self):
+        """清空 INIT 后的通知队列，确保旧通知不干扰后续操作"""
+        self.notifications.clear()
+        self._notify_event.clear()
+
     async def _write_image_chunks(self, data: bytes, chunk_size: int,
                                    no_reply_count: int, step: str,
                                    _retry: int = 0) -> int:
-        import platform
-        _is_linux = platform.system() == "Linux"
+        """分块发送图片数据，与 HTML 版 We() 函数保持一致：
+        - 单个块写入失败（非断线）时计数并继续，不中断传输
+        - 仅断线时触发重连重试
+        """
         count = 0
+        failed = 0  # 与 HTML 版一致：统计失败块数
         remaining = no_reply_count
         for i in range(0, len(data), chunk_size):
             chunk = data[i:i + chunk_size]
             cfg = (0x00 if i == 0 else 0xF0) | (0x0F if step == "bw" else 0x00)
             payload = bytes([Cmd.WRITE_IMAGE, cfg]) + chunk
             with_response = remaining <= 0
-            # Linux BlueZ: 禁止 write-without-response → write-with-response 切换
-            # 设备同时支持两种模式，但 BlueZ 切换时会断连
-            # Linux 上全部使用 write-without-response，依赖固件应用层确认
-            if _is_linux and self._supports_write_no_response:
-                with_response = False
+            # macOS/Linux: 禁止 write 模式切换，避免断连
+            # 设备同时支持两种模式，但模式切换时会断连
+            # 全部使用 write-with-response（与 HTML 版一致，更可靠）
+            if self._supports_write_response:
+                with_response = True
             try:
                 await self._write(payload, with_response=with_response)
             except Exception as e:
@@ -703,19 +721,20 @@ class EPDClient:
                     import typer
                     typer.echo(f"图片传输中断线 ({i}/{len(data)} bytes)，正在重连并重试 (第{_retry+1}次)...")
                     await self.reconnect()
-                    # 重连后重新 INIT（必须带 driver_id）
+                    # 重连后重新 INIT（必须带 driver_id，使设备知道使用哪个显示驱动）
                     init_payload = bytes([self._init_driver_id]) if self._init_driver_id is not None else b""
                     await self.write_cmd(Cmd.INIT, init_payload)
                     await asyncio.sleep(0.5)
                     # 递归重试整个图片传输
                     return await self._write_image_chunks(data, chunk_size, no_reply_count, step, _retry + 1)
-                raise
+                # 与 HTML 版一致：非断线错误计数并继续，不中断传输
+                failed += 1
             if with_response:
                 remaining = no_reply_count
             else:
                 remaining -= 1
             count += 1
-        return count
+        return failed
 
 
 # ============================================================

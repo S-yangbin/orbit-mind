@@ -17,9 +17,8 @@ import {
   CheckCircleOutlined,
   DeleteOutlined,
   SwapOutlined,
-  SunOutlined,
-  MoonOutlined,
   HistoryOutlined,
+  PlusOutlined,
 } from "@ant-design/icons";
 import type { MealPlan, MealPlanItem, Dish } from "../types";
 import {
@@ -38,20 +37,28 @@ const { Text, Title } = Typography;
 const DAY_NAMES: Record<number, string> = { 6: "周六", 0: "周日" };
 const MEAL_LABELS: Record<string, string> = {
   lunch: "午餐（全家）",
-  dinner: "晚餐（孩子）",
 };
-const MEAL_ICONS: Record<string, React.ReactNode> = {
-  lunch: <SunOutlined style={{ color: "#f59e0b" }} />,
-  dinner: <MoonOutlined style={{ color: "#8b5cf6" }} />,
+
+/** Category → subtle color for dish chips */
+const CATEGORY_COLORS: Record<string, string> = {
+  荤菜: "#fef3c7",
+  素菜: "#dcfce7",
+  凉菜: "#e0e7ff",
+  汤: "#fce7f3",
+  主食: "#fff7ed",
 };
 
 function getDayOfWeek(dateStr: string): number {
   return new Date(dateStr + "T00:00:00").getDay();
 }
 
-function formatDate(dateStr: string): string {
+function getDay(dateStr: string): number {
+  return new Date(dateStr + "T00:00:00").getDate();
+}
+
+function getMonthDay(dateStr: string): string {
   const d = new Date(dateStr + "T00:00:00");
-  return `${d.getMonth() + 1}月${d.getDate()}日`;
+  return `${d.getMonth() + 1}/${d.getDate()}`;
 }
 
 function getMonthKey(dateStr: string): string {
@@ -69,6 +76,12 @@ function isPastDate(dateStr: string): boolean {
   today.setHours(0, 0, 0, 0);
   const d = new Date(dateStr + "T00:00:00");
   return d < today;
+}
+
+function isToday(dateStr: string): boolean {
+  const today = new Date();
+  const d = new Date(dateStr + "T00:00:00");
+  return d.toDateString() === today.toDateString();
 }
 
 interface WeekData {
@@ -287,147 +300,177 @@ export function MealPlanner() {
 
     return dates.map((dateStr: string) => {
       const dayOfWeek = getDayOfWeek(dateStr);
+      const dayNum = getDay(dateStr);
       const lunchItems = itemsBySlot[`${dateStr}_lunch`] || [];
-      const dinnerItems = itemsBySlot[`${dateStr}_dinner`] || [];
       const isPast = isPastDate(dateStr);
+      const today = isToday(dateStr);
       const isLogOnly = plan.status === "log";
 
       return (
-        <Card
+        <div
           key={dateStr}
-          size="small"
           style={{
-            borderRadius: 12,
-            border: isPast ? "1px solid #e5e7eb" : "1px solid #fef3c7",
-            background: isPast ? "#f9fafb" : "#fffbeb",
-            opacity: isPast ? 0.9 : 1,
+            display: "flex",
+            gap: isMobile ? 10 : 14,
+            padding: isMobile ? "12px 10px" : "14px 16px",
+            borderRadius: 14,
+            background: isPast
+              ? "#fafafa"
+              : today
+              ? "linear-gradient(135deg, #fffbeb 0%, #fef9c3 100%)"
+              : "#fff",
+            border: today
+              ? "1.5px solid #f59e0b"
+              : isPast
+              ? "1px solid #f0f0f0"
+              : "1px solid #f5f5f5",
+            boxShadow: isPast
+              ? "none"
+              : "0 1px 3px rgba(0,0,0,0.04)",
+            transition: "box-shadow 0.2s, border-color 0.2s",
+            cursor: "default",
           }}
-          styles={{ body: { padding: "12px 14px" } }}
         >
+          {/* Date badge */}
           <div
             style={{
+              flexShrink: 0,
+              width: isMobile ? 48 : 56,
               display: "flex",
+              flexDirection: "column",
               alignItems: "center",
-              gap: 6,
-              marginBottom: 10,
-              paddingBottom: 8,
-              borderBottom: isPast ? "1px solid #e5e7eb" : "1px solid #fef3c7",
+              gap: 2,
             }}
           >
-            <Title level={5} style={{ margin: 0, fontWeight: 700, fontSize: 15 }}>
+            <div
+              style={{
+                width: isMobile ? 44 : 52,
+                height: isMobile ? 44 : 52,
+                borderRadius: 14,
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                background: today
+                  ? "#f59e0b"
+                  : isPast
+                  ? "#e5e7eb"
+                  : dayOfWeek === 6
+                  ? "linear-gradient(135deg, #fbbf24, #f59e0b)"
+                  : "linear-gradient(135deg, #a78bfa, #8b5cf6)",
+                color: "#fff",
+                fontWeight: 800,
+                fontSize: isMobile ? 20 : 24,
+                lineHeight: 1,
+              }}
+            >
+              {dayNum}
+            </div>
+            <Text
+              style={{
+                fontSize: 11,
+                color: isPast ? "#9ca3af" : today ? "#f59e0b" : "#6b7280",
+                fontWeight: 600,
+                letterSpacing: 0.5,
+              }}
+            >
               {DAY_NAMES[dayOfWeek] || "周末"}
-            </Title>
-            <Text style={{ fontSize: 13, color: isPast ? "#6b7280" : "#92400e" }}>
-              {formatDate(dateStr)}
             </Text>
-            {isPast && (
-              <Tag
-                color={isLogOnly ? "default" : "green"}
-                style={{ marginLeft: "auto", borderRadius: 10, fontSize: 11 }}
-              >
-                {isLogOnly ? "已记录" : "已确认"}
-              </Tag>
-            )}
+            <Text style={{ fontSize: 10, color: "#9ca3af" }}>
+              {getMonthDay(dateStr)}
+            </Text>
           </div>
 
-          {/* Lunch section */}
-          <div style={{ marginBottom: 10 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
-              {MEAL_ICONS.lunch}
-              <Text style={{ fontSize: 12, color: "#78716c", fontWeight: 500 }}>
+          {/* Content */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {/* Status bar */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: 8,
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 12,
+                  color: isPast ? "#9ca3af" : "#78716c",
+                  fontWeight: 500,
+                }}
+              >
                 {MEAL_LABELS.lunch}
               </Text>
-            </div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
-              {lunchItems.map((item) => (
-                <Popover
-                  key={item.id}
-                  content={dishPopover(item, isPast)}
-                  trigger="click"
-                  placement="bottom"
+              {isPast && (
+                <Tag
+                  color={isLogOnly ? "default" : "green"}
+                  style={{ borderRadius: 10, fontSize: 10, lineHeight: "18px", margin: 0 }}
                 >
-                  <Tag
-                    style={{
-                      cursor: "pointer",
-                      borderRadius: 10,
-                      border: item.is_manual ? "1px solid #8b5cf6" : undefined,
-                      background: item.source === "log" ? "#dcfce7" : undefined,
-                    }}
-                    color={item.is_manual && !item.source ? "purple" : undefined}
+                  {isLogOnly ? "已记录" : "已确认"}
+                </Tag>
+              )}
+            </div>
+
+            {/* Dish chips */}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+              {lunchItems.map((item) => {
+                const catColor = CATEGORY_COLORS[item.dish.category] || "#f3f4f6";
+                return (
+                  <Popover
+                    key={item.id}
+                    content={dishPopover(item, isPast)}
+                    trigger="click"
+                    placement="bottom"
                   >
-                    {item.dish.name}
-                  </Tag>
-                </Popover>
-              ))}
+                    <Tag
+                      style={{
+                        cursor: "pointer",
+                        borderRadius: 8,
+                        border: "none",
+                        background: item.source === "log" ? "#dcfce7" : catColor,
+                        color: isPast ? "#6b7280" : "#374151",
+                        fontSize: 13,
+                        padding: "2px 10px",
+                        lineHeight: "24px",
+                        fontWeight: 500,
+                        transition: "opacity 0.15s",
+                      }}
+                    >
+                      {item.dish.name}
+                    </Tag>
+                  </Popover>
+                );
+              })}
               {!isPast && (
-                <Button
-                  type="text"
-                  size="small"
+                <div
                   style={{
-                    fontSize: 14,
-                    color: "#d4d4d8",
-                    padding: "0 4px",
-                    minWidth: 24,
-                    height: 24,
-                    borderRadius: 6,
+                    width: 26,
+                    height: 26,
+                    borderRadius: 8,
+                    border: "1px dashed #d1d5db",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    cursor: "pointer",
+                    color: "#9ca3af",
+                    transition: "border-color 0.15s, color 0.15s",
                   }}
                   onClick={() => setAddTarget({ date: dateStr, meal_type: "lunch" })}
-                >
-                  +
-                </Button>
-              )}
-            </div>
-          </div>
-
-          {/* Dinner section */}
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
-              {MEAL_ICONS.dinner}
-              <Text style={{ fontSize: 12, color: "#78716c", fontWeight: 500 }}>
-                {MEAL_LABELS.dinner}
-              </Text>
-            </div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
-              {dinnerItems.map((item) => (
-                <Popover
-                  key={item.id}
-                  content={dishPopover(item, isPast)}
-                  trigger="click"
-                  placement="bottom"
-                >
-                  <Tag
-                    style={{
-                      cursor: "pointer",
-                      borderRadius: 10,
-                      border: item.is_manual ? "1px solid #8b5cf6" : undefined,
-                      background: item.source === "log" ? "#dcfce7" : undefined,
-                    }}
-                    color={item.is_manual && !item.source ? "purple" : undefined}
-                  >
-                    {item.dish.name}
-                  </Tag>
-                </Popover>
-              ))}
-              {!isPast && (
-                <Button
-                  type="text"
-                  size="small"
-                  style={{
-                    fontSize: 14,
-                    color: "#d4d4d8",
-                    padding: "0 4px",
-                    minWidth: 24,
-                    height: 24,
-                    borderRadius: 6,
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = "#f59e0b";
+                    e.currentTarget.style.color = "#f59e0b";
                   }}
-                  onClick={() => setAddTarget({ date: dateStr, meal_type: "dinner" })}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = "#d1d5db";
+                    e.currentTarget.style.color = "#9ca3af";
+                  }}
                 >
-                  +
-                </Button>
+                  <PlusOutlined style={{ fontSize: 12 }} />
+                </div>
               )}
             </div>
           </div>
-        </Card>
+        </div>
       );
     });
   };
@@ -509,8 +552,8 @@ export function MealPlanner() {
                     display: "grid",
                     gridTemplateColumns: isMobile
                       ? "1fr"
-                      : "repeat(auto-fill, minmax(280px, 1fr))",
-                    gap: isMobile ? 10 : 14,
+                      : "repeat(auto-fill, minmax(320px, 1fr))",
+                    gap: isMobile ? 8 : 12,
                   }}
                 >
                   {weeks.map((weekData) => renderWeekCard(weekData, isPastMonth))}
