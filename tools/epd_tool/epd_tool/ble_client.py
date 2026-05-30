@@ -26,7 +26,7 @@ from .constants import (
     EPD_SERVICE_UUID,
     APP_VER_UUID,
 )
-from .config import _save_address
+from .config import _load_config, _save_address
 from .adapter import _resolve_adapter
 from .image_processing import (
     convert_uc8159,
@@ -60,6 +60,8 @@ class EPDClient:
         self.sid: Optional[str] = None
         self.sid_validated: bool = False  # ECC SID 验证状态
         self.device_name: Optional[str] = None
+        self._supports_write_response: bool = True
+        self._supports_write_no_response: bool = True
         self._notify_event = asyncio.Event()
 
     async def connect(self):
@@ -83,6 +85,10 @@ class EPDClient:
                         self.ver_char = char
         if not self.epd_char:
             raise RuntimeError("未找到 EPD Characteristic")
+        # 检测特征写入属性，确定支持的写入模式
+        props = self.epd_char.properties or []
+        self._supports_write_response = 'write' in props
+        self._supports_write_no_response = 'write-without-response' in props
         if self.ver_char:
             ver_data = await self.client.read_gatt_char(self.ver_char)
             self.app_version = ver_data[0]
@@ -132,7 +138,7 @@ class EPDClient:
 
     async def _create_client(self) -> BleakClient:
         """创建 BleakClient 并连接
-
+    
         macOS 上 CoreBluetooth UUID 跨进程变化，直连必定失败，必须扫描后用 BLEDevice 连接。
         使用 find_device_by_filter，找到 NRF_EPD 设备即返回，无需等满扫描超时。
         """
@@ -142,11 +148,27 @@ class EPDClient:
         adapter_kwargs = {}
         if self.adapter and not _is_macos:
             adapter_kwargs["adapter"] = _resolve_adapter(self.adapter)
-
-        # 快速扫描: find_device_by_filter 找到 NRF_EPD 即返回（通常 1-3s）
+    
+        # 构建扫描过滤器: 匹配 NRF_EPD 名称 或 已保存的设备地址/名称
+        saved_name = _load_config().get("last_device_name", "")
+        saved_addr = self.address or ""
+    
+        def _scan_filter(d, adv):
+            name = d.name or adv.local_name or ""
+            # 按名称匹配: NRF_EPD 前缀 或 与已保存设备名一致
+            if name.startswith("NRF_EPD"):
+                return True
+            if saved_name and name == saved_name:
+                return True
+            # macOS: 按保存的地址匹配 (CoreBluetooth UUID)
+            if _is_macos and saved_addr and d.address == saved_addr:
+                return True
+            return False
+    
+        # 快速扫描: find_device_by_filter 找到设备即返回（通常 1-3s）
         try:
             device = await BleakScanner.find_device_by_filter(
-                lambda d, adv: (d.name or adv.local_name or "").startswith("NRF_EPD"),
+                _scan_filter,
                 timeout=15.0,
                 **adapter_kwargs,
             )
@@ -158,8 +180,8 @@ class EPDClient:
                 return client
         except Exception:
             pass
-
-        # 兜底: 非 macOS 平台尝试 MAC 地址直连
+    
+        # fallback: 非 macOS 平台尝试 MAC 地址直连
         if not _is_macos:
             try:
                 client = BleakClient(self.address, timeout=self.timeout, **adapter_kwargs)
@@ -167,7 +189,7 @@ class EPDClient:
                 return client
             except Exception:
                 pass
-
+    
         raise RuntimeError(
             "扫描未找到 EPD 设备 (NRF_EPD_*)。请确认:\n"
             "  1. 设备已开机且在蓝牙范围内\n"
@@ -179,13 +201,29 @@ class EPDClient:
         self.notifications.append(bytes(data))
         self._notify_event.set()
 
-    async def _write(self, data: bytes, with_response: bool = True):
+    async def _write(self, data: bytes, with_response: bool = True, _retry: int = 0):
         if not self.client or not self.client.is_connected:
             raise RuntimeError("设备未连接")
-        if with_response:
-            await self.client.write_gatt_char(self.epd_char, data, response=True)
-        else:
-            await self.client.write_gatt_char(self.epd_char, data, response=False)
+        # 根据特征属性自动选择写入模式
+        if with_response and not self._supports_write_response:
+            with_response = False
+        elif not with_response and not self._supports_write_no_response:
+            with_response = True
+        try:
+            if with_response:
+                await self.client.write_gatt_char(self.epd_char, data, response=True)
+            else:
+                await self.client.write_gatt_char(self.epd_char, data, response=False)
+        except Exception as e:
+            err_msg = str(e).lower()
+            # BlueZ GATT Protocol Error (code 14: Unlikely Error) 通常重试可恢复
+            is_gatt_retry = 'unlikely_error' in err_msg or 'gatt protocol error' in err_msg
+            if is_gatt_retry and _retry < 3:
+                import typer
+                typer.echo(f"GATT 协议错误，重试中 ({_retry+1}/3)...")
+                await asyncio.sleep(0.5 + _retry * 0.3)
+                return await self._write(data, with_response, _retry + 1)
+            raise
 
     async def write_cmd(self, cmd: Cmd, payload: bytes = b""):
         data = bytes([cmd]) + payload
@@ -377,6 +415,94 @@ class EPDClient:
         await self.write_cmd(Cmd.REFRESH)
         return {"refresh": "ok"}
 
+    async def reconnect(self, max_attempts: int = 3):
+        """重新连接设备（断线恢复）"""
+        import typer
+        typer.echo("检测到连接断开，正在重新连接...")
+        try:
+            if self.client:
+                try:
+                    await self.client.disconnect()
+                except Exception:
+                    pass
+                self.client = None
+        except Exception:
+            pass
+        # 设备断线后可能需要时间重新开始广播，多次尝试扫描
+        for attempt in range(max_attempts):
+            if attempt > 0:
+                typer.echo(f"重连尝试 {attempt+1}/{max_attempts}...")
+            try:
+                await asyncio.sleep(1.0 + attempt * 0.5)
+                self.client = await self._create_client()
+                break
+            except Exception as e:
+                if attempt == max_attempts - 1:
+                    raise
+                typer.echo(f"扫描失败，等待后重试 ({e})")
+        # 重新协商 MTU
+        try:
+            if self.mtu > 23 and hasattr(self.client, 'request_mtu'):
+                await self.client.request_mtu(self.mtu)
+                self.device_mtu = self.mtu - 3
+            else:
+                self.device_mtu = self.mtu - 3
+        except Exception:
+            self.device_mtu = self.mtu - 3
+        # 重新发现服务和特征
+        self.epd_char = None
+        self.ver_char = None
+        for service in self.client.services:
+            if service.uuid == EPD_SERVICE_UUID:
+                for char in service.characteristics:
+                    if char.uuid == EPD_CHAR_UUID:
+                        self.epd_char = char
+                    elif char.uuid == APP_VER_UUID:
+                        self.ver_char = char
+        if not self.epd_char:
+            raise RuntimeError("重连后未找到 EPD Characteristic")
+        # 重新检测写入属性
+        props = self.epd_char.properties or []
+        self._supports_write_response = 'write' in props
+        self._supports_write_no_response = 'write-without-response' in props
+        await self.client.start_notify(self.epd_char, self._on_notify)
+        # 等待 config 通知
+        try:
+            await asyncio.wait_for(self._notify_event.wait(), timeout=2.0)
+            self._notify_event.clear()
+            for _ in range(10):
+                await asyncio.sleep(0.2)
+                if self._notify_event.is_set():
+                    self._notify_event.clear()
+        except asyncio.TimeoutError:
+            pass
+        for notif in self.notifications:
+            self._parse_config(notif)
+        self.notifications.clear()
+        typer.echo("重连成功")
+
+    async def _write_safe(self, data: bytes, with_response: bool = True, max_retries: int = 2):
+        """带断线重连的写入操作"""
+        for attempt in range(max_retries + 1):
+            try:
+                await self._write(data, with_response=with_response)
+                return
+            except Exception as e:
+                err_msg = str(e).lower()
+                is_recoverable = any(kw in err_msg for kw in [
+                    'not connected', 'disconnected', 'broken pipe',
+                    'connection reset', 'device not found',
+                    '未连接', '断开',
+                    'unlikely_error', 'gatt protocol error',
+                ])
+                if is_recoverable and attempt < max_retries:
+                    await self.reconnect()
+                    # 重连后需要重新 INIT
+                    await self.write_cmd(Cmd.INIT)
+                    await asyncio.sleep(0.5)
+                else:
+                    raise
+
     async def sleep(self) -> dict:
         await self.write_cmd(Cmd.SLEEP)
         return {"sleep": "ok"}
@@ -451,44 +577,68 @@ class EPDClient:
 
         start = time.time()
         total_chunks = 0
+        _send_retry = 0
+        _max_send_retry = 2
 
-        # 槽位模式: SET_SLOT [0, slot] 保存图片到 flash
-        if slot is not None:
-            await self.write_cmd(Cmd.SET_SLOT, bytes([0, slot]))
-            # 升级版网页: SET_SLOT 后再发一次 INIT，重新初始化显示状态
-            await self.write_cmd(Cmd.INIT)
-            await asyncio.sleep(0.2)
+        while True:
+            try:
+                # 槽位模式: SET_SLOT [0, slot] 保存图片到 flash
+                if slot is not None:
+                    await self._write_safe(bytes([Cmd.SET_SLOT, 0, slot]), with_response=True)
+                    # 升级版网页: SET_SLOT 后再发一次 INIT，重新初始化显示状态
+                    await self._write_safe(bytes([Cmd.INIT]), with_response=True)
+                    await asyncio.sleep(0.5)
 
-        # 发送图片数据到显示 RAM
-        if mode == "3color" and is_uc8159:
-            half = len(processed) // 2
-            bw_data = processed[:half]
-            rw_data = processed[half:]
-            pixel_count = w * h
-            combined = convert_uc8159(bw_data, rw_data, pixel_count)
-            total_chunks = await self._write_image_chunks(combined, chunk_size, no_reply_count, "bw")
-        elif mode == "3color":
-            half = len(processed) // 2
-            bw_data = processed[:half]
-            rw_data = processed[half:]
-            n1 = await self._write_image_chunks(bw_data, chunk_size, no_reply_count, "bw")
-            n2 = await self._write_image_chunks(rw_data, chunk_size, no_reply_count, "red")
-            total_chunks = n1 + n2
-        elif mode == "bw" and is_uc8159:
-            # UC8159 黑白模式：生成空的红白数据，使用 convert_uc8159 转换
-            pixel_count = w * h
-            bw_len = (pixel_count + 7) // 8
-            empty_rw = bytes(bw_len) if len(processed) < bw_len else bytes(len(processed))
-            combined = convert_uc8159(processed[:bw_len], empty_rw, pixel_count)
-            total_chunks = await self._write_image_chunks(combined, chunk_size, no_reply_count, "bw")
-        else:
-            total_chunks = await self._write_image_chunks(processed, chunk_size, no_reply_count, "bw")
+                # 发送图片数据到显示 RAM
+                if mode == "3color" and is_uc8159:
+                    half = len(processed) // 2
+                    bw_data = processed[:half]
+                    rw_data = processed[half:]
+                    pixel_count = w * h
+                    combined = convert_uc8159(bw_data, rw_data, pixel_count)
+                    total_chunks = await self._write_image_chunks(combined, chunk_size, no_reply_count, "bw")
+                elif mode == "3color":
+                    half = len(processed) // 2
+                    bw_data = processed[:half]
+                    rw_data = processed[half:]
+                    n1 = await self._write_image_chunks(bw_data, chunk_size, no_reply_count, "bw")
+                    n2 = await self._write_image_chunks(rw_data, chunk_size, no_reply_count, "red")
+                    total_chunks = n1 + n2
+                elif mode == "bw" and is_uc8159:
+                    pixel_count = w * h
+                    bw_len = (pixel_count + 7) // 8
+                    empty_rw = bytes(bw_len) if len(processed) < bw_len else bytes(len(processed))
+                    combined = convert_uc8159(processed[:bw_len], empty_rw, pixel_count)
+                    total_chunks = await self._write_image_chunks(combined, chunk_size, no_reply_count, "bw")
+                else:
+                    total_chunks = await self._write_image_chunks(processed, chunk_size, no_reply_count, "bw")
+                break  # 成功，退出重试循环
+            except Exception as e:
+                err_msg = str(e).lower()
+                is_recoverable = any(kw in err_msg for kw in [
+                    'not connected', 'disconnected', 'broken pipe',
+                    'connection reset', 'device not found',
+                    '未连接', '断开',
+                    'unlikely_error', 'gatt protocol error',  # BlueZ GATT 错误
+                ])
+                if is_recoverable and _send_retry < _max_send_retry:
+                    _send_retry += 1
+                    import typer
+                    typer.echo(f"图片发送中断线，正在重连并重试 (第{_send_retry}次)...")
+                    await self.reconnect()
+                    # 重连后发送 INIT 重新初始化
+                    await self.write_cmd(Cmd.INIT)
+                    await asyncio.sleep(0.5)
+                    # 重新获取 MTU (可能更新)
+                    chunk_size = self.device_mtu - 2
+                    continue
+                raise
 
         # 等待图片数据写入完成
         await asyncio.sleep(1)
 
         # 发送 REFRESH 触发屏幕刷新（与升级版网页一致）
-        await self.write_cmd(Cmd.REFRESH)
+        await self._write_safe(bytes([Cmd.REFRESH]), with_response=True)
 
         # 等待墨水屏刷新完成
         # SSD1619 三色屏刷新可能需要 20-30 秒，必须等待足够长时间
@@ -516,7 +666,10 @@ class EPDClient:
         return result
 
     async def _write_image_chunks(self, data: bytes, chunk_size: int,
-                                   no_reply_count: int, step: str) -> int:
+                                   no_reply_count: int, step: str,
+                                   _retry: int = 0) -> int:
+        import platform
+        _is_linux = platform.system() == "Linux"
         count = 0
         remaining = no_reply_count
         for i in range(0, len(data), chunk_size):
@@ -524,7 +677,30 @@ class EPDClient:
             cfg = (0x00 if i == 0 else 0xF0) | (0x0F if step == "bw" else 0x00)
             payload = bytes([Cmd.WRITE_IMAGE, cfg]) + chunk
             with_response = remaining <= 0
-            await self._write(payload, with_response=with_response)
+            # Linux BlueZ: 禁止 write-without-response → write-with-response 切换
+            # 设备同时支持两种模式，但 BlueZ 切换时会断连
+            # Linux 上全部使用 write-without-response，依赖固件应用层确认
+            if _is_linux and self._supports_write_no_response:
+                with_response = False
+            try:
+                await self._write(payload, with_response=with_response)
+            except Exception as e:
+                err_msg = str(e).lower()
+                is_disconnect = any(kw in err_msg for kw in [
+                    'not connected', 'disconnected', 'broken pipe',
+                    'connection reset', 'device not found',
+                    '未连接', '断开',  # 中文错误消息
+                ])
+                if is_disconnect and _retry < 2:
+                    # 断线重连后需要从头发送图片数据
+                    import typer
+                    typer.echo(f"图片传输中断线 ({i}/{len(data)} bytes)，正在重连并重试 (第{_retry+1}次)...")
+                    await self.reconnect()
+                    await self.write_cmd(Cmd.INIT)
+                    await asyncio.sleep(0.5)
+                    # 递归重试整个图片传输
+                    return await self._write_image_chunks(data, chunk_size, no_reply_count, step, _retry + 1)
+                raise
             if with_response:
                 remaining = no_reply_count
             else:

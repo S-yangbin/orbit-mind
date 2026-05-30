@@ -410,11 +410,32 @@ def send_image(
             await client.connect()
             
             # 确定 driver_id，然后调用 epd_init 发送 INIT 并获取正确的 MTU
+            # BlueZ GATT Unlikely Error 时重连重试
+            _init_retry = 0
+            while True:
+                try:
+                    if driver is None:
+                        # 自动识别：INIT 无参数，从 config 通知中读取 driver_id
+                        if not json_output and _init_retry == 0:
+                            typer.echo("正在自动识别设备驱动型号...")
+                        await client.epd_init()
+                    else:
+                        driver_id = _parse_hex_int(driver)
+                        if not json_output and _init_retry == 0:
+                            typer.echo(f"初始化驱动 0x{driver_id:02x}...")
+                        await client.epd_init(driver_id)
+                    break
+                except Exception as e:
+                    err_msg = str(e).lower()
+                    is_gatt = 'unlikely_error' in err_msg or 'gatt protocol error' in err_msg
+                    if is_gatt and _init_retry < 2:
+                        _init_retry += 1
+                        typer.echo(f"GATT 协议错误，重连重试 ({_init_retry}/2)...")
+                        await client.reconnect()
+                        continue
+                    raise
+
             if driver is None:
-                # 自动识别：INIT 无参数，从 config 通知中读取 driver_id
-                if not json_output:
-                    typer.echo("正在自动识别设备驱动型号...")
-                await client.epd_init()
                 if client.driver_id is None:
                     typer.echo(
                         "错误: 无法从设备读取驱动型号。\n"
@@ -425,12 +446,6 @@ def send_image(
                 driver_id = client.driver_id
                 if not json_output:
                     typer.echo(f"自动识别到驱动型号: 0x{driver_id:02x}")
-            else:
-                # 手动指定：用 driver_id 发送 INIT，同时获取正确的 MTU
-                driver_id = _parse_hex_int(driver)
-                if not json_output:
-                    typer.echo(f"初始化驱动 0x{driver_id:02x}...")
-                await client.epd_init(driver_id)
 
             # 等待 INIT 完成（与浏览器 200ms 延迟一致）
             await asyncio.sleep(0.2)
