@@ -8,6 +8,7 @@ import "dayjs/locale/zh-cn";
 import { fetchPage } from "../api/pages";
 import type { Page } from "../types";
 import { EditProjectModal } from "./EditProjectModal";
+import { useIsMobile } from "../hooks/useIsMobile";
 
 dayjs.extend(relativeTime);
 dayjs.locale("zh-cn");
@@ -20,6 +21,7 @@ export function PagePreview() {
   const [page, setPage] = useState<Page | null>(null);
   const [loading, setLoading] = useState(true);
   const [showEdit, setShowEdit] = useState(false);
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     if (!id) return;
@@ -43,9 +45,22 @@ export function PagePreview() {
   }
 
   return (
-    <div style={{ height: "calc(100vh - 112px)", display: "flex", gap: 16 }}>
+    <div style={{
+      height: isMobile ? "auto" : "calc(100vh - 112px)",
+      display: "flex",
+      flexDirection: isMobile ? "column" : "row",
+      gap: isMobile ? 12 : 16,
+    }}>
       {/* Left: iframe preview */}
-      <div style={{ flex: 1, background: "#fff", borderRadius: 8, overflow: "hidden" }}>
+      <div style={{
+        flex: isMobile ? undefined : 1,
+        background: "#fff",
+        borderRadius: 12,
+        overflow: "hidden",
+        height: isMobile ? "60vh" : undefined,
+        minHeight: isMobile ? 300 : undefined,
+        border: "1px solid #f1f5f9",
+      }}>
         <iframe
           src={`/files/${page.slug}/${page.entry_file}`}
           style={{
@@ -59,7 +74,12 @@ export function PagePreview() {
       </div>
 
       {/* Right: metadata panel */}
-      <div style={{ width: 320, display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{
+        width: isMobile ? "100%" : 320,
+        display: "flex",
+        flexDirection: "column",
+        gap: 12,
+      }}>
         <Button
           icon={<ArrowLeftOutlined />}
           onClick={() => navigate("/")}
@@ -68,7 +88,7 @@ export function PagePreview() {
           返回列表
         </Button>
 
-        <Card style={{ flex: 1 }}>
+        <Card style={{ flex: isMobile ? undefined : 1, borderRadius: 12, border: "1px solid #f1f5f9" }}>
           <div style={{ marginBottom: 12 }}>
             <Space>
               <Button

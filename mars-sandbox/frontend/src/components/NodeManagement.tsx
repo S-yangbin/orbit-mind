@@ -28,6 +28,7 @@ import relativeTime from "dayjs/plugin/relativeTime";
 import { fetchNodes, deleteNode } from "../api/nodes";
 import type { NodeInfo } from "../types";
 import { CommandModal } from "./CommandModal";
+import { useIsMobile } from "../hooks/useIsMobile";
 
 dayjs.extend(relativeTime);
 
@@ -42,6 +43,7 @@ export function NodeManagement() {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [commandModalOpen, setCommandModalOpen] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string>("");
+  const isMobile = useIsMobile();
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -62,7 +64,6 @@ export function NodeManagement() {
     loadData();
   }, [loadData]);
 
-  // Auto-refresh every 10s
   useEffect(() => {
     if (!autoRefresh) return;
     const timer = setInterval(loadData, 10000);
@@ -83,7 +84,7 @@ export function NodeManagement() {
     {
       title: "状态",
       dataIndex: "status",
-      width: 90,
+      width: 80,
       filters: [
         { text: "在线", value: "online" },
         { text: "离线", value: "offline" },
@@ -100,7 +101,11 @@ export function NodeManagement() {
       title: "节点 ID",
       dataIndex: "node_id",
       sorter: (a, b) => a.node_id.localeCompare(b.node_id),
-      render: (id: string) => <Text strong copyable={{ text: id }}>{id}</Text>,
+      render: (id: string) => (
+        <Text strong copyable={{ text: id }} style={{ fontSize: 13 }}>
+          {isMobile ? id.slice(0, 12) + "..." : id}
+        </Text>
+      ),
     },
     {
       title: "主机名",
@@ -110,45 +115,49 @@ export function NodeManagement() {
     {
       title: "IP 地址",
       dataIndex: "ip",
-      width: 140,
+      width: 130,
+      responsive: ["sm"],
       render: (v: string) => v || <Text type="secondary">-</Text>,
     },
     {
       title: "平台",
       dataIndex: "platform",
-      width: 120,
+      width: 100,
+      responsive: ["md"],
       render: (v: string) => v || <Text type="secondary">-</Text>,
     },
     {
       title: "版本",
       dataIndex: "version",
-      width: 90,
+      width: 80,
+      responsive: ["md"],
     },
     {
       title: "运行时长",
       dataIndex: "uptime",
-      width: 120,
+      width: 100,
+      responsive: ["sm"],
       render: (v: string) => v || <Text type="secondary">-</Text>,
     },
     {
       title: "最后心跳",
       dataIndex: "last_heartbeat_at",
-      width: 150,
+      width: 130,
       sorter: (a, b) =>
         (a.last_heartbeat_at || "").localeCompare(b.last_heartbeat_at || ""),
       render: (v: string | null) =>
         v ? (
           <Tooltip title={dayjs(v).format("YYYY-MM-DD HH:mm:ss")}>
-            {dayjs(v).fromNow()}
+            <span style={{ fontSize: 13 }}>{dayjs(v).fromNow()}</span>
           </Tooltip>
         ) : (
-          <Text type="secondary">从未上线</Text>
+          <Text type="secondary" style={{ fontSize: 12 }}>从未上线</Text>
         ),
     },
     {
       title: "操作",
       key: "action",
-      width: 120,
+      width: 100,
       render: (_, record) => (
         <Space size="small">
           <Tooltip title={record.status === "online" ? "执行命令" : "节点离线"}>
@@ -161,6 +170,7 @@ export function NodeManagement() {
                 setSelectedNodeId(record.node_id);
                 setCommandModalOpen(true);
               }}
+              style={{ borderRadius: 6 }}
             />
           </Tooltip>
           <Popconfirm
@@ -176,6 +186,7 @@ export function NodeManagement() {
               danger
               icon={<DeleteOutlined />}
               size="small"
+              style={{ borderRadius: 6 }}
             />
           </Popconfirm>
         </Space>
@@ -189,62 +200,81 @@ export function NodeManagement() {
         display: "flex",
         justifyContent: "space-between",
         alignItems: "center",
-        marginBottom: 24,
+        marginBottom: isMobile ? 16 : 24,
+        flexWrap: "wrap",
+        gap: 8,
       }}>
-        <span style={{ fontSize: 20, fontWeight: 600 }}>节点管理</span>
-        <Space>
-          <span style={{ fontSize: 13, color: "#888" }}>自动刷新</span>
-          <Switch
-            size="small"
-            checked={autoRefresh}
-            onChange={setAutoRefresh}
-          />
-          <Button icon={<ReloadOutlined />} onClick={loadData} loading={loading}>
-            刷新
+        <span style={{ fontSize: isMobile ? 18 : 20, fontWeight: 700, color: "#0f172a" }}>
+          节点管理
+        </span>
+        <Space size={isMobile ? "small" : "middle"}>
+          <span style={{ fontSize: 12, color: "#94a3b8" }}>自动刷新</span>
+          <Switch size="small" checked={autoRefresh} onChange={setAutoRefresh} />
+          <Button
+            icon={<ReloadOutlined />}
+            onClick={loadData}
+            loading={loading}
+            size={isMobile ? "small" : "middle"}
+          >
+            {!isMobile && "刷新"}
           </Button>
         </Space>
       </div>
 
-      <Row gutter={16} style={{ marginBottom: 24 }}>
+      {/* Stat cards with colored accents */}
+      <Row gutter={[isMobile ? 8 : 16, isMobile ? 8 : 16]} style={{ marginBottom: isMobile ? 16 : 24 }}>
         <Col xs={8}>
-          <Card>
+          <Card
+            size="small"
+            style={{ borderRadius: 12, borderLeft: "3px solid #7c3aed" }}
+            styles={{ body: { padding: isMobile ? "10px 12px" : "14px 16px" } }}
+          >
             <Statistic
-              title="总节点数"
+              title={<span style={{ fontSize: 12, color: "#94a3b8" }}>总节点数</span>}
               value={total}
-              prefix={<DesktopOutlined />}
+              prefix={<DesktopOutlined style={{ color: "#7c3aed" }} />}
             />
           </Card>
         </Col>
         <Col xs={8}>
-          <Card>
+          <Card
+            size="small"
+            style={{ borderRadius: 12, borderLeft: "3px solid #10b981" }}
+            styles={{ body: { padding: isMobile ? "10px 12px" : "14px 16px" } }}
+          >
             <Statistic
-              title="在线"
+              title={<span style={{ fontSize: 12, color: "#94a3b8" }}>在线</span>}
               value={online}
-              valueStyle={{ color: "#52c41a" }}
+              valueStyle={{ color: "#10b981" }}
               prefix={<WifiOutlined />}
             />
           </Card>
         </Col>
         <Col xs={8}>
-          <Card>
+          <Card
+            size="small"
+            style={{ borderRadius: 12, borderLeft: "3px solid #ef4444" }}
+            styles={{ body: { padding: isMobile ? "10px 12px" : "14px 16px" } }}
+          >
             <Statistic
-              title="离线"
+              title={<span style={{ fontSize: 12, color: "#94a3b8" }}>离线</span>}
               value={offline}
-              valueStyle={{ color: "#ff4d4f" }}
+              valueStyle={{ color: "#ef4444" }}
               prefix={<DisconnectOutlined />}
             />
           </Card>
         </Col>
       </Row>
 
-      <Card>
+      <Card style={{ borderRadius: 12, border: "1px solid #f1f5f9" }}>
         <Table<NodeInfo>
           rowKey="node_id"
           columns={columns}
           dataSource={nodes}
           loading={loading}
           pagination={false}
-          size="middle"
+          size={isMobile ? "small" : "middle"}
+          scroll={{ x: 700 }}
           locale={{ emptyText: "暂无注册节点" }}
         />
       </Card>

@@ -1,0 +1,150 @@
+/* Global resets & mobile-friendly base styles */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+/* Ensure images and videos don't overflow */
+img, video, iframe {
+  max-width: 100%;
+}
+
+/* Smooth transitions for interactive elements */
+a, button, .ant-card, .ant-tag, .ant-btn {
+  transition: all 0.2s ease-out;
+}
+
+/* Better card hover effect */
+.ant-card.ant-card-hoverable:hover {
+  box-shadow: 0 8px 25px -5px rgba(0, 0, 0, 0.08), 0 4px 10px -6px rgba(0, 0, 0, 0.04) !important;
+  transform: translateY(-2px);
+}
+
+/* Subtle scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Ant Design overrides for mobile */
+@media (max-width: 576px) {
+  .ant-layout-content {
+    padding: 12px !important;
+  }
+
+  .ant-modal {
+    max-width: calc(100vw - 16px) !important;
+    margin: 8px auto !important;
+  }
+
+  .ant-table {
+    font-size: 13px;
+  }
+
+  .ant-form-item {
+    margin-bottom: 16px;
+  }
+
+  /* Smaller headings on mobile */
+  .ant-typography h3, h3 {
+    font-size: 18px !important;
+  }
+  .ant-typography h4, h4 {
+    font-size: 16px !important;
+  }
+
+  /* Better touch targets */
+  .ant-btn-sm {
+    min-height: 32px;
+    min-width: 32px;
+  }
+
+  /* Tabs more compact on mobile */
+  .ant-tabs-nav {
+    margin-bottom: 12px !important;
+  }
+
+  /* Card body padding reduced */
+  .ant-card-body {
+    padding: 12px !important;
+  }
+
+  /* Statistic cards more compact */
+  .ant-statistic-title {
+    font-size: 12px !important;
+  }
+  .ant-statistic-content-value {
+    font-size: 20px !important;
+  }
+}
+
+/* Prevent iOS input zoom */
+@media (max-width: 768px) {
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Fix for iOS safe area */
+@supports (padding: env(safe-area-inset-bottom)) {
+  body {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* Respect reduced motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .ant-card.ant-card-hoverable:hover {
+    transform: none;
+  }
+}
+
+/* Loading skeleton pulse */
+@keyframes shimmer {
+  0% { opacity: 0.6; }
+  50% { opacity: 1; }
+  100% { opacity: 0.6; }
+}
+
+/* Page entry animation */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.page-enter {
+  animation: fadeInUp 0.3s ease-out;
+}

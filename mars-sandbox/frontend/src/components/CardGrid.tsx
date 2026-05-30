@@ -7,10 +7,12 @@ import { ScanButton } from "./ScanButton";
 import { fetchPages } from "../api/pages";
 import { fetchTags } from "../api/tags";
 import type { Page, Tag as TagType } from "../types";
+import { useIsMobile } from "../hooks/useIsMobile";
 
 const CATEGORY_OPTIONS = [
-  { label: '工作', value: 'work' },
-  { label: '生活', value: 'life' },
+  { label: "工作", value: "work" },
+  { label: "生活", value: "life" },
+  { label: "游戏", value: "game" },
 ];
 
 export function CardGrid() {
@@ -23,6 +25,7 @@ export function CardGrid() {
   const [selectedTag, setSelectedTag] = useState<string | undefined>();
   const [selectedCategory, setSelectedCategory] = useState<string>("work");
   const [editPage, setEditPage] = useState<Page | null>(null);
+  const isMobile = useIsMobile();
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -59,16 +62,9 @@ export function CardGrid() {
   return (
     <div>
       {/* Top bar */}
-      <div style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        marginBottom: 24,
-        flexWrap: "wrap",
-        gap: 12,
-      }}>
-        <Space wrap>
-           {/* Category tabs */}
+      <div style={{ marginBottom: isMobile ? 16 : 24 }}>
+        {/* Category tabs - full width on mobile */}
+        <div style={{ marginBottom: isMobile ? 12 : 16 }}>
           <Segmented
             options={CATEGORY_OPTIONS}
             value={selectedCategory}
@@ -76,44 +72,74 @@ export function CardGrid() {
               setSelectedCategory(v as string);
               setCurrentPage(1);
             }}
-            size="large"
+            block={isMobile}
+            size={isMobile ? "middle" : "large"}
           />
-          
-          <Input
-            placeholder="搜索标题或描述..."
-            prefix={<SearchOutlined />}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            onPressEnter={() => { setCurrentPage(1); loadData(); }}
-            allowClear
-            style={{ width: 280 }}
-          />
-          <Select
-            placeholder="按标签筛选"
-            value={selectedTag}
-            onChange={(v) => { setSelectedTag(v); setCurrentPage(1); }}
-            allowClear
-            style={{ width: 180 }}
-            options={tags.map((t) => ({ label: t.name, value: t.name }))}
-          />
-        </Space>
-        <Space>
-          <ScanButton onScanComplete={loadData} />
-          <Button icon={<ReloadOutlined />} onClick={handleRefresh}>
-            刷新
-          </Button>
-        </Space>
+        </div>
+
+        {/* Search and actions row */}
+        <div style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 8,
+          flexWrap: isMobile ? "wrap" : "nowrap",
+        }}>
+          <div style={{
+            display: "flex",
+            gap: 8,
+            flex: 1,
+            minWidth: 0,
+            flexWrap: "wrap",
+          }}>
+            <Input
+              placeholder="搜索标题或描述..."
+              prefix={<SearchOutlined style={{ color: "#94a3b8" }} />}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onPressEnter={() => { setCurrentPage(1); loadData(); }}
+              allowClear
+              style={{ flex: 1, minWidth: isMobile ? 0 : 200, maxWidth: isMobile ? "100%" : 320 }}
+            />
+            {!isMobile && (
+              <Select
+                placeholder="按标签筛选"
+                value={selectedTag}
+                onChange={(v) => { setSelectedTag(v); setCurrentPage(1); }}
+                allowClear
+                style={{ width: 180 }}
+                options={tags.map((t) => ({ label: t.name, value: t.name }))}
+              />
+            )}
+          </div>
+          <Space size="small">
+            <ScanButton onScanComplete={loadData} />
+            <Button icon={<ReloadOutlined />} onClick={handleRefresh} />
+          </Space>
+        </div>
       </div>
 
       {/* Tag filter bar */}
       {tags.length > 0 && (
-        <div style={{ marginBottom: 16 }}>
-          <span style={{ marginRight: 8, color: "#888", fontSize: 12 }}>标签:</span>
+        <div style={{
+          marginBottom: 16,
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          flexWrap: "wrap",
+        }}>
+          <span style={{ color: "#94a3b8", fontSize: 12, flexShrink: 0 }}>标签:</span>
           {tags.map((t) => (
             <Tag
               key={t.id}
-              color={selectedTag === t.name ? "blue" : "default"}
-              style={{ cursor: "pointer", marginBottom: 4 }}
+              color={selectedTag === t.name ? "purple" : "default"}
+              style={{
+                cursor: "pointer",
+                marginBottom: 4,
+                borderRadius: 12,
+                fontSize: 12,
+                userSelect: "none",
+              }}
               onClick={() => {
                 setSelectedTag(selectedTag === t.name ? undefined : t.name);
                 setCurrentPage(1);
@@ -128,9 +154,12 @@ export function CardGrid() {
       {/* Card grid */}
       <Spin spinning={loading}>
         {pages.length === 0 && !loading ? (
-          <Empty description="暂无页面数据，请先将 HTML 项目放到 /mnt/oss-sybuddy/html/ 目录下，然后触发扫描" />
+          <Empty
+            description="暂无页面数据"
+            style={{ padding: "60px 0" }}
+          />
         ) : (
-          <Row gutter={[16, 16]}>
+          <Row gutter={[isMobile ? 12 : 16, isMobile ? 12 : 16]}>
             {pages.map((p) => (
               <Col xs={24} sm={12} md={8} lg={6} key={p.id}>
                 <ProjectCard page={p} onEdit={setEditPage} />
@@ -142,12 +171,13 @@ export function CardGrid() {
 
       {/* Pagination */}
       {total > 20 && (
-        <div style={{ textAlign: "center", marginTop: 24 }}>
+        <div style={{ textAlign: "center", marginTop: 24, paddingBottom: 16 }}>
           <Pagination
             current={currentPage}
             total={total}
             pageSize={20}
             onChange={setCurrentPage}
+            simple={isMobile}
           />
         </div>
       )}

@@ -3,10 +3,12 @@ import { Modal, Form, Input, Select, Button, Space, message } from "antd";
 import { fetchTags, createTag } from "../api/tags";
 import { updatePage } from "../api/pages";
 import type { Page, Tag } from "../types";
+import { useIsMobile } from "../hooks/useIsMobile";
 
 const CATEGORY_OPTIONS = [
   { label: '工作', value: 'work' },
   { label: '生活', value: 'life' },
+  { label: '游戏', value: 'game' },
 ];
 
 interface Props {
@@ -20,6 +22,7 @@ export function EditProjectModal({ page, visible, onClose, onSave }: Props) {
   const [form] = Form.useForm();
   const [tags, setTags] = useState<Tag[]>([]);
   const [saving, setSaving] = useState(false);
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     if (visible) {
@@ -75,7 +78,7 @@ export function EditProjectModal({ page, visible, onClose, onSave }: Props) {
           </Button>
         </Space>
       }
-      width={500}
+      width={isMobile ? "calc(100vw - 16px)" : 500}
     >
       <Form form={form} layout="vertical">
         <Form.Item
@@ -102,8 +105,16 @@ export function EditProjectModal({ page, visible, onClose, onSave }: Props) {
         </Form.Item>
       </Form>
       {page.is_customized === 1 && (
-        <div style={{ marginTop: 12, padding: "8px 12px", background: "#fffbe6", borderRadius: 4, fontSize: 12, color: "#888" }}>
-          ℹ️ 此页面已被手动编辑过，后续扫描不会覆盖您修改的字段
+        <div style={{
+          marginTop: 12,
+          padding: "8px 12px",
+          background: "#eff6ff",
+          borderRadius: 8,
+          fontSize: 12,
+          color: "#64748b",
+          border: "1px solid #dbeafe",
+        }}>
+          此页面已被手动编辑过，后续扫描不会覆盖您修改的字段
         </div>
       )}
     </Modal>
