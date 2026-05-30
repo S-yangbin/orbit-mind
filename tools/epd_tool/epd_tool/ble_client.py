@@ -616,7 +616,15 @@ class EPDClient:
                     total_chunks = await self._write_image_chunks(combined, chunk_size, no_reply_count, "bw")
                 else:
                     total_chunks = await self._write_image_chunks(processed, chunk_size, no_reply_count, "bw")
-                break  # 成功，退出重试循环
+
+                # 等待图片数据写入完成
+                await asyncio.sleep(1)
+
+                # 发送 REFRESH 触发屏幕刷新（与升级版网页一致）
+                # Linux BlueZ: 与前图片数据保持一致的 write 模式，避免模式切换断连
+                await self._write(bytes([Cmd.REFRESH]), with_response=False)
+
+                break  # 全部成功（图片+刷新），退出重试循环
             except Exception as e:
                 err_msg = str(e).lower()
                 is_recoverable = any(kw in err_msg for kw in [
@@ -638,12 +646,6 @@ class EPDClient:
                     chunk_size = self.device_mtu - 2
                     continue
                 raise
-
-        # 等待图片数据写入完成
-        await asyncio.sleep(1)
-
-        # 发送 REFRESH 触发屏幕刷新（与升级版网页一致）
-        await self._write_safe(bytes([Cmd.REFRESH]), with_response=True)
 
         # 等待墨水屏刷新完成
         # SSD1619 三色屏刷新可能需要 20-30 秒，必须等待足够长时间
