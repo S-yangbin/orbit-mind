@@ -2,10 +2,28 @@
 from pathlib import Path
 from dotenv import load_dotenv
 import os
+import shutil
 
 _env_path = Path(__file__).parent.parent / ".env"
 if _env_path.exists():
     load_dotenv(_env_path)
+
+
+def _find_exe(name: str, fallback: str = "") -> str:
+    """Find executable in PATH, with fallback."""
+    found = shutil.which(name)
+    if found:
+        return found
+    # Common alternative paths
+    extras = [
+        "/usr/bin", "/usr/local/bin", "/opt/homebrew/bin",
+        "/snap/bin", "/home/linuxbrew/.linuxbrew/bin",
+    ]
+    for base in extras:
+        candidate = os.path.join(base, name)
+        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    return fallback or name
 
 class Settings:
     APP_NAME: str = os.getenv("APP_NAME", "mars-sandbox")
@@ -37,6 +55,10 @@ class Settings:
     # File paths
     HTML_ROOT: str = os.getenv("HTML_ROOT", "/mnt/oss-sybuddy/html")
     THUMBNAIL_DIR: str = os.getenv("THUMBNAIL_DIR", "/mnt/oss-sybuddy/data/thumbnails")
+    VIDEO_ROOT: str = os.getenv("VIDEO_ROOT", "/mnt/oss-sybuddy/videos")
+    VIDEO_AUDIO_DIR: str = os.getenv("VIDEO_AUDIO_DIR", "/mnt/oss-sybuddy/video-audio")
+    VIDEO_NOTES_DIR: str = os.getenv("VIDEO_NOTES_DIR", "/mnt/oss-sybuddy/video-notes")
+    MEAL_PHOTO_DIR: str = os.getenv("MEAL_PHOTO_DIR", "/mnt/oss-sybuddy/data/meals")
 
     # Scan
     SCAN_INTERVAL: int = int(os.getenv("SCAN_INTERVAL", "300"))
@@ -48,5 +70,27 @@ class Settings:
     # Server
     HOST: str = os.getenv("HOST", "0.0.0.0")
     PORT: int = int(os.getenv("PORT", "8000"))
+
+    # Bailian CLI
+    DASHSCOPE_API_KEY: str = os.getenv("DASHSCOPE_API_KEY", "")
+
+    # OSS (for signed video URLs)
+    OSS_ENDPOINT: str = os.getenv("OSS_ENDPOINT", "please-set-endpoint")
+    OSS_BUCKET: str = os.getenv("OSS_BUCKET", "sybuddy")
+    OSS_ACCESS_KEY_ID: str = os.getenv("OSS_ACCESS_KEY_ID", "")
+    OSS_ACCESS_KEY_SECRET: str = os.getenv("OSS_ACCESS_KEY_SECRET", "")
+
+    @property
+    def oss_video_base_url(self) -> str:
+        return f"https://{self.OSS_BUCKET}.{self.OSS_ENDPOINT}/videos"
+
+    # External tool paths (auto-detected, can override via env)
+    @property
+    def FFMPEG_PATH(self) -> str:
+        return os.getenv("FFMPEG_PATH") or _find_exe("ffmpeg")
+
+    @property
+    def BL_PATH(self) -> str:
+        return os.getenv("BL_PATH") or _find_exe("bl")
 
 settings = Settings()

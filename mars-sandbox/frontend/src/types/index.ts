@@ -68,3 +68,213 @@ export interface NodeCommandResponse {
   stderr: string;
   duration_ms: number;
 }
+
+// --- Videos ---
+export interface VideoInfo {
+  id: number;
+  title: string;
+  filename: string;
+  file_path: string;
+  file_size: number;
+  duration: number | null;
+  status: "pending" | "processing" | "ready" | "error";
+  transcription_json: string | null;
+  oss_url: string | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+  segments: VideoSegmentInfo[];
+  segment_count?: number;
+  mastered_count?: number;
+}
+
+export interface VideoSegmentInfo {
+  id: number;
+  video_id: number;
+  title: string;
+  segment_type: "intro" | "qa" | "explanation" | "outro" | "other";
+  start_time: number;
+  end_time: number;
+  transcription: string | null;
+  sort_order: number;
+  notes: SegmentNoteInfo[];
+  progress: SegmentProgressInfo | null;
+}
+
+export interface SegmentNoteInfo {
+  id: number;
+  segment_id: number;
+  content: string;
+  note_path: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SegmentProgressInfo {
+  id: number;
+  segment_id: number;
+  mastered: number;
+  loop_count: number;
+  last_practiced_at: string | null;
+}
+
+export interface VideoUploadResponse {
+  id: number;
+  title: string;
+  filename: string;
+  file_size: number;
+  status: string;
+  message: string;
+}
+
+export interface VideoListResponse {
+  total: number;
+  page: number;
+  page_size: number;
+  items: VideoInfo[];
+}
+
+export interface SegmentCreateData {
+  title: string;
+  segment_type?: string;
+  start_time: number;
+  end_time: number;
+  transcription?: string;
+  sort_order?: number;
+}
+
+export interface SegmentUpdateData {
+  title?: string;
+  segment_type?: string;
+  start_time?: number;
+  end_time?: number;
+  transcription?: string;
+  sort_order?: number;
+}
+
+export interface SegmentProgressUpdateData {
+  mastered?: number;
+  loop_count?: number;
+  last_practiced_at?: string;
+}
+
+// --- Meals ---
+export interface FamilyMember {
+  id: number;
+  name: string;
+  role: string;
+  avatar: string;
+  preferences: { likes: string[]; dislikes: string[]; note: string } | null;
+  allergies: string[] | null;
+  liked_dishes: { dish_id: number; dish_name: string; like_count: number; last_liked_at: string | null }[] | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FamilyMemberUpdate {
+  name?: string;
+  avatar?: string;
+  preferences?: { likes: string[]; dislikes: string[]; note: string };
+  allergies?: string[];
+}
+
+export interface Dish {
+  id: number;
+  name: string;
+  category: string;
+  ingredients: string[];
+  recipe: string | null;
+  tags: string[];
+  origin: string;
+  photo_count: number;
+  created_at: string;
+}
+
+export interface DishListResponse {
+  total: number;
+  page: number;
+  page_size: number;
+  items: Dish[];
+}
+
+export interface DishCreateData {
+  name: string;
+  category?: string;
+  ingredients?: string[];
+  recipe?: string;
+  tags?: string[];
+}
+
+export interface MealPlanItemDish {
+  id: number;
+  name: string;
+  category: string;
+  ingredients: string[];
+  recipe?: string;
+}
+
+export interface MealPlanItem {
+  id: number;
+  date: string;
+  meal_type: "breakfast" | "lunch" | "dinner";
+  dish: MealPlanItemDish;
+  sort_order: number;
+  is_manual: number;
+}
+
+export interface MealPlan {
+  id: number;
+  week_start_date: string;
+  status: "draft" | "confirmed";
+  items: MealPlanItem[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RecognizedDish {
+  name: string;
+  matched: boolean;
+  dish_id: number | null;
+  category: string | null;
+}
+
+export interface PhotoRecognizeResult {
+  image_path: string;
+  recognized_dishes: RecognizedDish[];
+  date: string;
+  meal_type: string;
+}
+
+export interface MealLogDish {
+  dish_id: number | null;
+  name: string;
+}
+
+export interface MealLog {
+  id: number;
+  date: string;
+  meal_type: "breakfast" | "lunch" | "dinner";
+  image_path: string;
+  dishes: MealLogDish[];
+  rating: number | null;
+  note: string | null;
+  rated_by: string | null;
+  liked_by: number[];
+  created_at: string;
+}
+
+export interface MealLogListResponse {
+  total: number;
+  page: number;
+  page_size: number;
+  items: MealLog[];
+}
+
+export interface MealHistoryStats {
+  period: { start: string; end: string };
+  total_meals: number;
+  unique_dishes: number;
+  repeat_rate: number;
+  top_repeated: { dish_id: number | null; name: string; count: number; category: string }[];
+  daily_counts: { date: string; dish_count: number; unique_count: number }[];
+}

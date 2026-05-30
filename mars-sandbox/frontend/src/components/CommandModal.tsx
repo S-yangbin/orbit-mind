@@ -22,6 +22,7 @@ import {
 } from "@ant-design/icons";
 import { executeNodeCommand } from "../api/nodes";
 import type { NodeCommandResponse } from "../types";
+import { useIsMobile } from "../hooks/useIsMobile";
 
 const { Text, Paragraph } = Typography;
 const { TextArea } = Input;
@@ -50,6 +51,7 @@ export function CommandModal({ open, nodeId, onClose }: CommandModalProps) {
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<string[]>([]);
   const resultRef = useRef<HTMLDivElement>(null);
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     if (open) {
@@ -115,7 +117,7 @@ export function CommandModal({ open, nodeId, onClose }: CommandModalProps) {
       }
       open={open}
       onCancel={onClose}
-      width={720}
+      width={isMobile ? "calc(100vw - 16px)" : 720}
       footer={null}
       destroyOnClose
     >

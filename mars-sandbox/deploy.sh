@@ -55,6 +55,7 @@ echo ""
 echo "步骤 3: 上传到服务器..."
 scp mars-sandbox-backend.tar.gz $SERVER:$REMOTE_DIR/
 scp mars-sandbox-frontend.tar.gz $SERVER:$REMOTE_DIR/
+scp mars-sandbox.service $SERVER:$REMOTE_DIR/
 echo "✓ 上传完成"
 
 echo ""
@@ -89,6 +90,11 @@ mkdir -p frontend
 tar -xzf mars-sandbox-frontend.tar.gz -C frontend/
 
 echo "✓ 前端部署完成"
+
+# 安装 systemd service 文件
+cp /opt/mars-sandbox/mars-sandbox.service /etc/systemd/system/mars-sandbox.service
+systemctl daemon-reload
+echo "✓ Service 文件已更新"
 
 # 设置权限
 chown -R www-data:www-data /opt/mars-sandbox 2>/dev/null || true

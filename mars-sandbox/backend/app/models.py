@@ -1,7 +1,7 @@
 """SQLAlchemy ORM models."""
-from datetime import datetime
+from datetime import datetime, date
 from sqlalchemy import (
-    Column, Integer, String, Text, BigInteger, DateTime,
+    Column, Integer, String, Text, BigInteger, DateTime, Date,
     ForeignKey, SmallInteger, UniqueConstraint
 )
 from sqlalchemy.orm import relationship
@@ -78,3 +78,175 @@ class Node(Base):
     uptime_seconds = Column(BigInteger, nullable=False, default=0)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class Video(Base):
+    """Uploaded video file metadata."""
+    __tablename__ = "videos"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    title = Column(String(255), nullable=False)
+    filename = Column(String(512), nullable=False)
+    file_path = Column(String(1024), nullable=False)  # OSS relative path
+    file_size = Column(BigInteger, nullable=False, default=0)
+    duration = Column(Integer, nullable=True)  # seconds
+    status = Column(String(32), nullable=False, default="pending")  # pending / processing / ready / error
+    transcription_json = Column(Text, nullable=True)  # full ASR result JSON
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    segments = relationship("VideoSegment", back_populates="video", cascade="all, delete-orphan",
+                            order_by="VideoSegment.start_time")
+
+
+class VideoSegment(Base):
+    """A labeled time segment within a video."""
+    __tablename__ = "video_segments"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    video_id = Column(Integer, ForeignKey("videos.id", ondelete="CASCADE"), nullable=False, index=True)
+    title = Column(String(255), nullable=False)
+    segment_type = Column(String(32), nullable=False, default="qa")  # intro / qa / explanation / outro / other
+    start_time = Column(Integer, nullable=False)  # seconds
+    end_time = Column(Integer, nullable=False)  # seconds
+    transcription = Column(Text, nullable=True)  # subtitle text for this segment
+    sort_order = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    video = relationship("Video", back_populates="segments")
+    notes = relationship("SegmentNote", back_populates="segment", cascade="all, delete-orphan",
+                         order_by="SegmentNote.created_at")
+    progress = relationship("SegmentProgress", back_populates="segment", uselist=False,
+                            cascade="all, delete-orphan")
+
+
+class SegmentNote(Base):
+    """User notes for a video segment."""
+    __tablename__ = "segment_notes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    segment_id = Column(Integer, ForeignKey("video_segments.id", ondelete="CASCADE"), nullable=False, index=True)
+    content = Column(Text, nullable=False)
+    note_path = Column(String(1024), nullable=True)  # OSS markdown file path
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    segment = relationship("VideoSegment", back_populates="notes")
+
+
+class SegmentProgress(Base):
+    """Learning progress for a video segment."""
+    __tablename__ = "segment_progress"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    segment_id = Column(Integer, ForeignKey("video_segments.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    mastered = Column(SmallInteger, nullable=False, default=0)  # 0=not mastered, 1=mastered
+    loop_count = Column(Integer, nullable=False, default=0)
+    last_practiced_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    segment = relationship("VideoSegment", back_populates="progress")
+
+
+# ============================================================
+# Meal Planning Models
+# ============================================================
+
+class FamilyMember(Base):
+    """Family member with taste preferences."""
+    __tablename__ = "family_members"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(50), nullable=False)
+    role = Column(String(20), nullable=False, unique=True)  # father/mother/child/grandma
+    avatar = Column(String(16), nullable=False, default="\U0001f468")
+    preferences = Column(Text, nullable=True)  # JSON: {"likes": [...], "dislikes": [...], "note": "..."}
+    allergies = Column(Text, nullable=True)  # JSON: ["peanut", ...]
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class Dish(Base):
+    """Dish in the recipe database, accumulated over time."""
+    __tablename__ = "dishes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(100), nullable=False, unique=True, index=True)
+    category = Column(String(20), nullable=False, default="\u8364\u83dc")  # \u8364\u83dc/\u7d20\u83dc/\u6c64/\u4e3b\u98df/\u51c9\u83dc/\u65e9\u70b9
+    ingredients = Column(Text, nullable=True)  # JSON: ["pork", "soy sauce", ...]
+    recipe = Column(Text, nullable=True)  # brief cooking instructions
+    tags = Column(Text, nullable=True)  # JSON: ["mild", "kid-friendly", ...]
+    origin = Column(String(20), nullable=False, default="ai")  # ai / photo / manual
+    photo_count = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+class MealPlan(Base):
+    """Weekly meal plan."""
+    __tablename__ = "meal_plans"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    week_start_date = Column(Date, nullable=False, unique=True, index=True)
+    status = Column(String(16), nullable=False, default="draft")  # draft / confirmed
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    items = relationship("MealPlanItem", back_populates="plan", cascade="all, delete-orphan",
+                         order_by="MealPlanItem.date, MealPlanItem.meal_type, MealPlanItem.sort_order")
+
+
+class MealPlanItem(Base):
+    """A single dish in a meal plan for a specific date and meal type."""
+    __tablename__ = "meal_plan_items"
+    __table_args__ = (
+        UniqueConstraint("meal_plan_id", "date", "meal_type", "dish_id", name="uq_plan_item"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    meal_plan_id = Column(Integer, ForeignKey("meal_plans.id", ondelete="CASCADE"), nullable=False, index=True)
+    date = Column(Date, nullable=False)
+    meal_type = Column(String(16), nullable=False)  # breakfast / lunch / dinner
+    dish_id = Column(Integer, ForeignKey("dishes.id", ondelete="CASCADE"), nullable=False)
+    sort_order = Column(Integer, nullable=False, default=0)
+    is_manual = Column(SmallInteger, nullable=False, default=0)  # 0=AI, 1=manual
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    plan = relationship("MealPlan", back_populates="items")
+    dish = relationship("Dish")
+
+
+class MealLog(Base):
+    """Actual meal history record with photo."""
+    __tablename__ = "meal_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    date = Column(Date, nullable=False, index=True)
+    meal_type = Column(String(16), nullable=False)  # breakfast / lunch / dinner
+    image_path = Column(String(512), nullable=False)
+    dishes_json = Column(Text, nullable=False)  # JSON: [{"dish_id": 1, "name": "..."}, ...]
+    confirmed = Column(SmallInteger, nullable=False, default=1)
+    rated_by = Column(String(20), nullable=True)
+    rating = Column(SmallInteger, nullable=True)  # 1-5
+    note = Column(Text, nullable=True)
+    liked_by = Column(Text, nullable=True)  # JSON: [member_id, ...]
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+class DishPreference(Base):
+    """Tracks which family members like which dishes, accumulated from meal logs."""
+    __tablename__ = "dish_preferences"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    dish_id = Column(Integer, ForeignKey("dishes.id", ondelete="CASCADE"), nullable=False, index=True)
+    member_id = Column(Integer, ForeignKey("family_members.id", ondelete="CASCADE"), nullable=False, index=True)
+    like_count = Column(Integer, nullable=False, default=0)  # number of times liked
+    last_liked_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("dish_id", "member_id", name="uq_dish_member_preference"),
+    )

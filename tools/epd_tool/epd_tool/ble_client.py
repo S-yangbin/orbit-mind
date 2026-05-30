@@ -60,6 +60,7 @@ class EPDClient:
         self.sid: Optional[str] = None
         self.sid_validated: bool = False  # ECC SID 验证状态
         self.device_name: Optional[str] = None
+        self._init_driver_id: Optional[int] = None  # INIT 时使用的 driver_id，用于重连后重新初始化
         self._supports_write_response: bool = True
         self._supports_write_no_response: bool = True
         self._notify_event = asyncio.Event()
@@ -270,6 +271,7 @@ class EPDClient:
         return result
 
     async def epd_init(self, driver_id: Optional[int] = None) -> dict:
+        self._init_driver_id = driver_id  # 保存用于重连后重新初始化
         payload = bytes([driver_id]) if driver_id is not None else b""
         # 先解析 connect() 阶段可能残留的通知（如 slots=, sid= 等），再清空
         for notif in self.notifications:
@@ -497,8 +499,9 @@ class EPDClient:
                 ])
                 if is_recoverable and attempt < max_retries:
                     await self.reconnect()
-                    # 重连后需要重新 INIT
-                    await self.write_cmd(Cmd.INIT)
+                    # 重连后需要重新 INIT（必须带 driver_id）
+                    init_payload = bytes([self._init_driver_id]) if self._init_driver_id is not None else b""
+                    await self.write_cmd(Cmd.INIT, init_payload)
                     await asyncio.sleep(0.5)
                 else:
                     raise
@@ -586,7 +589,8 @@ class EPDClient:
                 if slot is not None:
                     await self._write_safe(bytes([Cmd.SET_SLOT, 0, slot]), with_response=True)
                     # 升级版网页: SET_SLOT 后再发一次 INIT，重新初始化显示状态
-                    await self._write_safe(bytes([Cmd.INIT]), with_response=True)
+                    init_payload = bytes([Cmd.INIT, driver_id]) if driver_id is not None else bytes([Cmd.INIT])
+                    await self._write_safe(init_payload, with_response=True)
                     await asyncio.sleep(0.5)
 
                 # 发送图片数据到显示 RAM
@@ -626,8 +630,9 @@ class EPDClient:
                     import typer
                     typer.echo(f"图片发送中断线，正在重连并重试 (第{_send_retry}次)...")
                     await self.reconnect()
-                    # 重连后发送 INIT 重新初始化
-                    await self.write_cmd(Cmd.INIT)
+                    # 重连后发送 INIT 重新初始化（必须带 driver_id）
+                    init_payload = bytes([driver_id]) if driver_id is not None else b""
+                    await self._write_safe(bytes([Cmd.INIT]) + init_payload, with_response=True)
                     await asyncio.sleep(0.5)
                     # 重新获取 MTU (可能更新)
                     chunk_size = self.device_mtu - 2
@@ -696,7 +701,9 @@ class EPDClient:
                     import typer
                     typer.echo(f"图片传输中断线 ({i}/{len(data)} bytes)，正在重连并重试 (第{_retry+1}次)...")
                     await self.reconnect()
-                    await self.write_cmd(Cmd.INIT)
+                    # 重连后重新 INIT（必须带 driver_id）
+                    init_payload = bytes([self._init_driver_id]) if self._init_driver_id is not None else b""
+                    await self.write_cmd(Cmd.INIT, init_payload)
                     await asyncio.sleep(0.5)
                     # 递归重试整个图片传输
                     return await self._write_image_chunks(data, chunk_size, no_reply_count, step, _retry + 1)

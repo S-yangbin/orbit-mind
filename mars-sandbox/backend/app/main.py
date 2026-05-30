@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from .config import settings
 from .database import init_db, SessionLocal, engine
 from .auth import get_current_user
-from .routers import auth, pages, tags, scan, nodes, commands
+from .routers import auth, pages, tags, scan, nodes, commands, videos, meals
 from .scanner import scan_directories
 from .ws.router import router as ws_router
 
@@ -63,6 +63,10 @@ async def lifespan(app: FastAPI):
     # Ensure directories exist
     os.makedirs(settings.HTML_ROOT, exist_ok=True)
     os.makedirs(settings.THUMBNAIL_DIR, exist_ok=True)
+    os.makedirs(settings.VIDEO_ROOT, exist_ok=True)
+    os.makedirs(settings.VIDEO_AUDIO_DIR, exist_ok=True)
+    os.makedirs(settings.VIDEO_NOTES_DIR, exist_ok=True)
+    os.makedirs(settings.MEAL_PHOTO_DIR, exist_ok=True)
 
     # Start background scanner
     import threading
@@ -99,6 +103,8 @@ app.include_router(tags.router)
 app.include_router(scan.router)
 app.include_router(nodes.router)
 app.include_router(commands.router)
+app.include_router(videos.router)
+app.include_router(meals.router)
 app.include_router(ws_router)  # WebSocket路由
 
 
@@ -108,6 +114,11 @@ app.include_router(ws_router)  # WebSocket路由
 thumb_dir = settings.THUMBNAIL_DIR
 if os.path.isdir(thumb_dir):
     app.mount("/thumbnails", StaticFiles(directory=thumb_dir), name="thumbnails")
+
+# Meal photos
+meal_dir = settings.MEAL_PHOTO_DIR
+if os.path.isdir(meal_dir):
+    app.mount("/meal-photos", StaticFiles(directory=meal_dir), name="meal-photos")
 
 
 # Frontend assets (JS/CSS bundles referenced by index.html at /assets/)
@@ -170,7 +181,10 @@ if FRONTEND_DIST.exists():
 @app.get("/")
 async def root():
     if FRONTEND_DIST.exists():
-        return FileResponse(str(FRONTEND_DIST / "index.html"))
+        return FileResponse(
+            str(FRONTEND_DIST / "index.html"),
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+        )
     return JSONResponse({
         "app": "Mars Sandbox",
         "status": "running",
