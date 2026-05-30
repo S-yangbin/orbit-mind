@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy import func, and_
 from sqlalchemy.orm import Session
 
-from PIL import Image as PILImage
+from PIL import Image as PILImage, ImageOps as PILImageOps
 
 from ..config import settings
 from ..database import get_db
@@ -98,7 +98,7 @@ def _member_to_response(m: FamilyMember, db: Session = None) -> FamilyMemberResp
     )
 
 
-def _plan_item_to_response(item: MealPlanItem) -> MealPlanItemResponse:
+def _plan_item_to_response(item: MealPlanItem, source: Optional[str] = None) -> MealPlanItemResponse:
     dish = item.dish
     return MealPlanItemResponse(
         id=item.id,
@@ -113,6 +113,7 @@ def _plan_item_to_response(item: MealPlanItem) -> MealPlanItemResponse:
         ),
         sort_order=item.sort_order,
         is_manual=item.is_manual,
+        source=source,
     )
 
 
@@ -278,26 +279,68 @@ async def get_current_plan(
     db: Session = Depends(get_db),
     _=Depends(require_auth),
 ):
-    """Return all plans for the next 4 weeks that contain weekend items."""
+    """Return plans for past 4 weeks + next 4 weeks, with meal_log data for past dates."""
     today = date.today()
     monday = today - timedelta(days=today.weekday())
+    # Start from 4 weeks ago, end 4 weeks from now
+    start_monday = monday - timedelta(days=28)
     end_monday = monday + timedelta(days=28)
+
+    # Fetch all plans in the range
     plans = (
         db.query(MealPlan)
-        .filter(MealPlan.week_start_date >= monday, MealPlan.week_start_date < end_monday)
+        .filter(MealPlan.week_start_date >= start_monday, MealPlan.week_start_date < end_monday)
         .order_by(MealPlan.week_start_date)
         .all()
     )
-    if not plans:
-        return {"plans": []}
+
+    # Fetch meal logs for the past month (up to today)
+    four_weeks_ago = today - timedelta(days=28)
+    meal_logs = (
+        db.query(MealLog)
+        .filter(MealLog.date >= four_weeks_ago, MealLog.date <= today)
+        .order_by(MealLog.date)
+        .all()
+    )
+
+    # Build meal_log lookup: date -> {meal_type -> dishes}
+    log_lookup: dict = {}
+    log_date_dish_names: dict = {}  # date -> set of dish names
+    for log in meal_logs:
+        log_date = log.date
+        if log_date not in log_lookup:
+            log_lookup[log_date] = {}
+            log_date_dish_names[log_date] = set()
+        log_lookup[log_date].setdefault(log.meal_type, []).append(log)
+        dishes = _parse_json_field(log.dishes_json) or []
+        for d in dishes:
+            if isinstance(d, dict) and "name" in d:
+                log_date_dish_names[log_date].add(d["name"])
 
     result = []
+    # Track which (date, meal_type) slots we've processed (to avoid duplicates)
+    processed_slots = set()
+
+    # Process plans
     for plan in plans:
-        weekend_items = [
-            _plan_item_to_response(item)
-            for item in plan.items
-            if item.date.weekday() in (5, 6)  # Sat=5, Sun=6
-        ]
+        weekend_items = []
+        for item in plan.items:
+            if item.date.weekday() not in (5, 6):
+                continue
+            # For past dates with logs, skip plan items (will show logs instead)
+            if item.date < today and item.date in log_lookup:
+                processed_slots.add((item.date, item.meal_type))
+                continue
+            # Determine source
+            source = None
+            if item.date == today and item.date in log_lookup:
+                source = "log"
+            elif plan.status == "confirmed":
+                source = "plan"
+            resp_item = _plan_item_to_response(item, source=source)
+            weekend_items.append(resp_item)
+            processed_slots.add((item.date, item.meal_type))
+
         if weekend_items:
             result.append({
                 "id": plan.id,
@@ -307,6 +350,72 @@ async def get_current_plan(
                 "created_at": plan.created_at,
                 "updated_at": plan.updated_at,
             })
+
+    # Add synthetic entries for ALL past dates with logs (show actual data)
+    synthetic_by_week: dict = {}  # week_start_date -> list of items
+    for log_date, meal_types in log_lookup.items():
+        for meal_type, logs in meal_types.items():
+            # Collect unique dishes from all logs for this date/meal_type
+            seen_dish_ids = set()
+            dish_idx = 0
+            for log in logs:
+                dishes = _parse_json_field(log.dishes_json) or []
+                for d in dishes:
+                    if not isinstance(d, dict) or "name" not in d:
+                        continue
+                    # Find dish
+                    dish_id = d.get("dish_id")
+                    dish_obj = None
+                    if dish_id:
+                        dish_obj = db.query(Dish).filter(Dish.id == dish_id).first()
+                    if not dish_obj:
+                        dish_obj = db.query(Dish).filter(Dish.name == d["name"]).first()
+                    if not dish_obj or dish_obj.id in seen_dish_ids:
+                        continue
+                    seen_dish_ids.add(dish_obj.id)
+                    resp_item = MealPlanItemResponse(
+                        id=-log.id * 100 - dish_idx,
+                        date=log_date,
+                        meal_type=meal_type,
+                        dish=MealPlanItemDish(
+                            id=dish_obj.id,
+                            name=dish_obj.name,
+                            category=dish_obj.category or "其他",
+                            ingredients=[],
+                            recipe=dish_obj.recipe,
+                        ),
+                        sort_order=dish_idx,
+                        is_manual=0,
+                        source="log",
+                    )
+                    synthetic_by_week.setdefault(
+                        log_date - timedelta(days=log_date.weekday()), []
+                    ).append(resp_item)
+                    dish_idx += 1
+
+    # Merge synthetic log entries into existing plans or create new entries
+    for week_start, items in synthetic_by_week.items():
+        existing = next((r for r in result if r["week_start_date"] == week_start), None)
+        if existing:
+            # Filter out any plan items for the same date/meal_type as logs
+            log_date_types = {(item.date, item.meal_type) for item in items}
+            existing["items"] = [
+                i for i in existing["items"]
+                if (i.date, i.meal_type) not in log_date_types
+            ]
+            existing["items"].extend(items)
+        else:
+            result.append({
+                "id": -week_start.toordinal(),
+                "week_start_date": week_start,
+                "status": "log",
+                "items": items,
+                "created_at": None,
+                "updated_at": None,
+            })
+
+    # Sort by week_start_date
+    result.sort(key=lambda x: x["week_start_date"] if isinstance(x["week_start_date"], date) else date.fromisoformat(str(x["week_start_date"])))
     return {"plans": result}
 
 
@@ -565,13 +674,11 @@ async def recognize_photo(
     content = await image.read()
     try:
         img = PILImage.open(io.BytesIO(content))
-        if img.format != "JPEG":
-            img = img.convert("RGB")
-            img.save(file_path, "JPEG", quality=90)
-            logger.info("Converted image from %s to JPG: %s", img.format, file_path)
-        else:
-            with open(file_path, "wb") as f:
-                f.write(content)
+        # Fix EXIF orientation (common with Apple photos)
+        img = PILImageOps.exif_transpose(img)
+        img = img.convert("RGB")
+        img.save(file_path, "JPEG", quality=90)
+        logger.info("Saved photo as JPEG (format=%s, exif-transposed): %s", img.format, file_path)
     except Exception as e:
         logger.warning("Pillow conversion failed, saving raw: %s", e)
         with open(file_path, "wb") as f:

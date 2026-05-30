@@ -66,14 +66,31 @@ export function MealRecorder() {
   }, []);
 
   const handleFileSelected = async (file: File) => {
+    let displayFile = file;
+
+    // Convert HEIC/HEIF (Apple photos) to JPEG for browser display
+    if (/\.heic$/i.test(file.name) || /image\/hei(c|f)/.test(file.type)) {
+      try {
+        const { default: heic2any } = await import("heic2any");
+        const converted = await heic2any({ blob: file, toType: "image/jpeg", quality: 0.9 });
+        const blob = converted instanceof Array ? converted[0] : converted;
+        displayFile = new File([blob], file.name.replace(/\.(heic|heif)$/i, ".jpg"), {
+          type: "image/jpeg",
+        });
+      } catch {
+        message.warning("HEIC 图片转换失败，请尝试使用其他图片");
+        return;
+      }
+    }
+
     // Show preview
-    const url = URL.createObjectURL(file);
+    const url = URL.createObjectURL(displayFile);
     setImageUrl(url);
     setRecognizing(true);
 
     try {
       const result = await recognizePhoto(
-        file,
+        displayFile,
         selectedDate.format("YYYY-MM-DD"),
         mealType
       );

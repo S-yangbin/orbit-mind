@@ -10,6 +10,7 @@ import {
   Spin,
   Typography,
   Empty,
+  Divider,
 } from "antd";
 import {
   ThunderboltOutlined,
@@ -18,6 +19,7 @@ import {
   SwapOutlined,
   SunOutlined,
   MoonOutlined,
+  HistoryOutlined,
 } from "@ant-design/icons";
 import type { MealPlan, MealPlanItem, Dish } from "../types";
 import {
@@ -52,6 +54,29 @@ function formatDate(dateStr: string): string {
   return `${d.getMonth() + 1}月${d.getDate()}日`;
 }
 
+function getMonthKey(dateStr: string): string {
+  const d = new Date(dateStr + "T00:00:00");
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function getMonthLabel(monthKey: string): string {
+  const [year, month] = monthKey.split("-");
+  return `${year}年${parseInt(month)}月`;
+}
+
+function isPastDate(dateStr: string): boolean {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const d = new Date(dateStr + "T00:00:00");
+  return d < today;
+}
+
+interface WeekData {
+  plan: MealPlan;
+  dates: string[];
+  itemsBySlot: Record<string, MealPlanItem[]>;
+}
+
 export function MealPlanner() {
   const [plans, setPlans] = useState<MealPlan[]>([]);
   const [loading, setLoading] = useState(true);
@@ -80,33 +105,62 @@ export function MealPlanner() {
     }
   };
 
-  const allWeekendDates = useMemo(() => {
-    const dateSet = new Set<string>();
+  // Group plans by month
+  const weeksByMonth = useMemo(() => {
+    const result: Record<string, WeekData[]> = {};
     for (const plan of plans) {
+      const itemsBySlot: Record<string, MealPlanItem[]> = {};
+      const dateSet = new Set<string>();
+
       for (const item of plan.items) {
         const day = getDayOfWeek(item.date);
         if (day === 0 || day === 6) {
           dateSet.add(item.date);
+          const key = `${item.date}_${item.meal_type}`;
+          if (!itemsBySlot[key]) itemsBySlot[key] = [];
+          itemsBySlot[key].push(item);
         }
       }
+
+      Object.values(itemsBySlot).forEach((arr) =>
+        arr.sort((a, b) => a.sort_order - b.sort_order)
+      );
+
+      const sortedDates = Array.from(dateSet).sort();
+      if (sortedDates.length === 0) continue;
+
+      const monthKey = getMonthKey(sortedDates[0]);
+      if (!result[monthKey]) result[monthKey] = [];
+      result[monthKey].push({ plan, dates: sortedDates, itemsBySlot });
     }
-    return Array.from(dateSet).sort();
+
+    // Sort weeks within each month
+    Object.values(result).forEach((weeks) =>
+      weeks.sort((a, b) => a.dates[0].localeCompare(b.dates[0]))
+    );
+
+    return result;
   }, [plans]);
+
+  // Sort month keys: past months first, then future
+  const sortedMonthKeys = useMemo(() => {
+    const today = new Date();
+    const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+    return Object.keys(weeksByMonth).sort((a, b) => {
+      // Past months first (descending), then current/future (ascending)
+      const aPast = a < currentMonth;
+      const bPast = b < currentMonth;
+      if (aPast && bPast) return b.localeCompare(a);
+      if (aPast && !bPast) return -1;
+      if (!aPast && bPast) return 1;
+      return a.localeCompare(b);
+    });
+  }, [weeksByMonth]);
 
   const hasDraft = plans.some((p) => p.status === "draft");
-
-  const itemsBySlot = useMemo(() => {
-    const map: Record<string, MealPlanItem[]> = {};
-    for (const plan of plans) {
-      for (const item of plan.items) {
-        const key = `${item.date}_${item.meal_type}`;
-        if (!map[key]) map[key] = [];
-        map[key].push(item);
-      }
-    }
-    Object.values(map).forEach((arr) => arr.sort((a, b) => a.sort_order - b.sort_order));
-    return map;
-  }, [plans]);
+  const hasFutureDraft = plans.some(
+    (p) => p.status === "draft" && p.items.some((i) => !isPastDate(i.date))
+  );
 
   const handleGenerate = async () => {
     setGenerating(true);
@@ -133,6 +187,10 @@ export function MealPlanner() {
   };
 
   const handleRemove = async (itemId: number) => {
+    if (itemId < 0) {
+      message.warning("历史记录无法移除");
+      return;
+    }
     try {
       await removePlanItem(itemId);
       setPlans((prev) =>
@@ -145,7 +203,7 @@ export function MealPlanner() {
   };
 
   const handleReplace = async (dishId: number) => {
-    if (!replaceItem) return;
+    if (!replaceItem || replaceItem.id < 0) return;
     try {
       await replacePlanItem(replaceItem.id, dishId);
       loadData();
@@ -184,48 +242,208 @@ export function MealPlanner() {
     />
   );
 
-  const dishPopover = (item: MealPlanItem) => {
+  const dishPopover = (item: MealPlanItem, isPast: boolean) => {
     return (
       <div style={{ maxWidth: 280 }}>
         <Text strong>{item.dish.name}</Text>
         <Tag style={{ marginLeft: 8, borderRadius: 10 }}>{item.dish.category}</Tag>
+        {item.source === "log" && (
+          <Tag color="green" style={{ marginLeft: 4, borderRadius: 10 }}>
+            <HistoryOutlined /> 实际
+          </Tag>
+        )}
         {item.dish.recipe && (
           <div style={{ marginTop: 8, fontSize: 12, color: "#64748b" }}>
             {item.dish.recipe}
           </div>
         )}
-        <div style={{ marginTop: 8, display: "flex", gap: 4 }}>
-          <Button
-            size="small"
-            icon={<SwapOutlined />}
-            onClick={() => setReplaceItem(item)}
-            style={{ borderRadius: 6 }}
-          >
-            替换
-          </Button>
-          <Button
-            size="small"
-            danger
-            icon={<DeleteOutlined />}
-            onClick={() => handleRemove(item.id)}
-            style={{ borderRadius: 6 }}
-          >
-            移除
-          </Button>
-        </div>
+        {!isPast && item.id > 0 && (
+          <div style={{ marginTop: 8, display: "flex", gap: 4 }}>
+            <Button
+              size="small"
+              icon={<SwapOutlined />}
+              onClick={() => setReplaceItem(item)}
+              style={{ borderRadius: 6 }}
+            >
+              替换
+            </Button>
+            <Button
+              size="small"
+              danger
+              icon={<DeleteOutlined />}
+              onClick={() => handleRemove(item.id)}
+              style={{ borderRadius: 6 }}
+            >
+              移除
+            </Button>
+          </div>
+        )}
       </div>
     );
   };
 
+  const renderWeekCard = (weekData: WeekData, isPastMonth: boolean) => {
+    const { plan, dates, itemsBySlot } = weekData;
+
+    return dates.map((dateStr: string) => {
+      const dayOfWeek = getDayOfWeek(dateStr);
+      const lunchItems = itemsBySlot[`${dateStr}_lunch`] || [];
+      const dinnerItems = itemsBySlot[`${dateStr}_dinner`] || [];
+      const isPast = isPastDate(dateStr);
+      const isLogOnly = plan.status === "log";
+
+      return (
+        <Card
+          key={dateStr}
+          size="small"
+          style={{
+            borderRadius: 12,
+            border: isPast ? "1px solid #e5e7eb" : "1px solid #fef3c7",
+            background: isPast ? "#f9fafb" : "#fffbeb",
+            opacity: isPast ? 0.9 : 1,
+          }}
+          styles={{ body: { padding: "12px 14px" } }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              marginBottom: 10,
+              paddingBottom: 8,
+              borderBottom: isPast ? "1px solid #e5e7eb" : "1px solid #fef3c7",
+            }}
+          >
+            <Title level={5} style={{ margin: 0, fontWeight: 700, fontSize: 15 }}>
+              {DAY_NAMES[dayOfWeek] || "周末"}
+            </Title>
+            <Text style={{ fontSize: 13, color: isPast ? "#6b7280" : "#92400e" }}>
+              {formatDate(dateStr)}
+            </Text>
+            {isPast && (
+              <Tag
+                color={isLogOnly ? "default" : "green"}
+                style={{ marginLeft: "auto", borderRadius: 10, fontSize: 11 }}
+              >
+                {isLogOnly ? "已记录" : "已确认"}
+              </Tag>
+            )}
+          </div>
+
+          {/* Lunch section */}
+          <div style={{ marginBottom: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+              {MEAL_ICONS.lunch}
+              <Text style={{ fontSize: 12, color: "#78716c", fontWeight: 500 }}>
+                {MEAL_LABELS.lunch}
+              </Text>
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
+              {lunchItems.map((item) => (
+                <Popover
+                  key={item.id}
+                  content={dishPopover(item, isPast)}
+                  trigger="click"
+                  placement="bottom"
+                >
+                  <Tag
+                    style={{
+                      cursor: "pointer",
+                      borderRadius: 10,
+                      border: item.is_manual ? "1px solid #8b5cf6" : undefined,
+                      background: item.source === "log" ? "#dcfce7" : undefined,
+                    }}
+                    color={item.is_manual && !item.source ? "purple" : undefined}
+                  >
+                    {item.dish.name}
+                  </Tag>
+                </Popover>
+              ))}
+              {!isPast && (
+                <Button
+                  type="text"
+                  size="small"
+                  style={{
+                    fontSize: 14,
+                    color: "#d4d4d8",
+                    padding: "0 4px",
+                    minWidth: 24,
+                    height: 24,
+                    borderRadius: 6,
+                  }}
+                  onClick={() => setAddTarget({ date: dateStr, meal_type: "lunch" })}
+                >
+                  +
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {/* Dinner section */}
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+              {MEAL_ICONS.dinner}
+              <Text style={{ fontSize: 12, color: "#78716c", fontWeight: 500 }}>
+                {MEAL_LABELS.dinner}
+              </Text>
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
+              {dinnerItems.map((item) => (
+                <Popover
+                  key={item.id}
+                  content={dishPopover(item, isPast)}
+                  trigger="click"
+                  placement="bottom"
+                >
+                  <Tag
+                    style={{
+                      cursor: "pointer",
+                      borderRadius: 10,
+                      border: item.is_manual ? "1px solid #8b5cf6" : undefined,
+                      background: item.source === "log" ? "#dcfce7" : undefined,
+                    }}
+                    color={item.is_manual && !item.source ? "purple" : undefined}
+                  >
+                    {item.dish.name}
+                  </Tag>
+                </Popover>
+              ))}
+              {!isPast && (
+                <Button
+                  type="text"
+                  size="small"
+                  style={{
+                    fontSize: 14,
+                    color: "#d4d4d8",
+                    padding: "0 4px",
+                    minWidth: 24,
+                    height: 24,
+                    borderRadius: 6,
+                  }}
+                  onClick={() => setAddTarget({ date: dateStr, meal_type: "dinner" })}
+                >
+                  +
+                </Button>
+              )}
+            </div>
+          </div>
+        </Card>
+      );
+    });
+  };
+
   return (
     <div>
-      <div style={{
-        display: "flex",
-        justifyContent: "space-between",
-        marginBottom: 16,
-        flexWrap: "wrap",
-        gap: 8,
-      }}>
+      {/* Action buttons */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          marginBottom: 16,
+          flexWrap: "wrap",
+          gap: 8,
+        }}
+      >
         <Space wrap>
           <Button
             type="primary"
@@ -236,7 +454,7 @@ export function MealPlanner() {
           >
             AI 生成未来一个月菜单
           </Button>
-          {hasDraft && (
+          {hasFutureDraft && (
             <Button
               icon={<CheckCircleOutlined />}
               onClick={handleConfirm}
@@ -248,147 +466,63 @@ export function MealPlanner() {
         </Space>
       </div>
 
-      {allWeekendDates.length === 0 ? (
+      {sortedMonthKeys.length === 0 ? (
         <Empty description="还没有周末菜单，点击「AI 生成」开始规划" style={{ padding: "60px 0" }} />
       ) : (
-        <div style={{
-          display: "grid",
-          gridTemplateColumns: isMobile
-            ? "1fr"
-            : "repeat(auto-fill, minmax(280px, 1fr))",
-          gap: isMobile ? 10 : 14,
-        }}>
-          {allWeekendDates.map((dateStr: string) => {
-            const dayOfWeek = getDayOfWeek(dateStr);
-            const lunchItems = itemsBySlot[`${dateStr}_lunch`] || [];
-            const dinnerItems = itemsBySlot[`${dateStr}_dinner`] || [];
+        <div>
+          {sortedMonthKeys.map((monthKey, idx) => {
+            const weeks = weeksByMonth[monthKey];
+            const today = new Date();
+            const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+            const isPastMonth = monthKey < currentMonth;
 
             return (
-              <Card
-                key={dateStr}
-                size="small"
-                style={{
-                  borderRadius: 12,
-                  border: "1px solid #fef3c7",
-                  background: "#fffbeb",
-                }}
-                styles={{ body: { padding: "12px 14px" } }}
-              >
-                <div style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  marginBottom: 10,
-                  paddingBottom: 8,
-                  borderBottom: "1px solid #fef3c7",
-                }}>
-                  <Title level={5} style={{ margin: 0, fontWeight: 700, fontSize: 15 }}>
-                    {DAY_NAMES[dayOfWeek] || "周末"}
+              <div key={monthKey} style={{ marginBottom: 24 }}>
+                {idx > 0 && <Divider style={{ margin: "16px 0" }} />}
+
+                {/* Month header */}
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    marginBottom: 12,
+                  }}
+                >
+                  <Title level={4} style={{ margin: 0, color: isPastMonth ? "#9ca3af" : "#78350f" }}>
+                    {getMonthLabel(monthKey)}
                   </Title>
-                  <Text style={{ fontSize: 13, color: "#92400e" }}>
-                    {formatDate(dateStr)}
-                  </Text>
+                  {isPastMonth && (
+                    <Tag
+                      icon={<HistoryOutlined />}
+                      color="default"
+                      style={{ borderRadius: 10 }}
+                    >
+                      历史记录
+                    </Tag>
+                  )}
                 </div>
 
-                {/* Lunch section */}
-                <div style={{ marginBottom: 10 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
-                    {MEAL_ICONS.lunch}
-                    <Text style={{ fontSize: 12, color: "#78716c", fontWeight: 500 }}>
-                      {MEAL_LABELS.lunch}
-                    </Text>
-                  </div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
-                    {lunchItems.map((item) => (
-                      <Popover
-                        key={item.id}
-                        content={dishPopover(item)}
-                        trigger="click"
-                        placement="bottom"
-                      >
-                        <Tag
-                          style={{
-                            cursor: "pointer",
-                            borderRadius: 10,
-                            border: item.is_manual ? "1px solid #8b5cf6" : undefined,
-                          }}
-                          color={item.is_manual ? "purple" : undefined}
-                        >
-                          {item.dish.name}
-                        </Tag>
-                      </Popover>
-                    ))}
-                    <Button
-                      type="text"
-                      size="small"
-                      style={{
-                        fontSize: 14,
-                        color: "#d4d4d8",
-                        padding: "0 4px",
-                        minWidth: 24,
-                        height: 24,
-                        borderRadius: 6,
-                      }}
-                      onClick={() => setAddTarget({ date: dateStr, meal_type: "lunch" })}
-                    >
-                      +
-                    </Button>
-                  </div>
+                {/* Week cards grid */}
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: isMobile
+                      ? "1fr"
+                      : "repeat(auto-fill, minmax(280px, 1fr))",
+                    gap: isMobile ? 10 : 14,
+                  }}
+                >
+                  {weeks.map((weekData) => renderWeekCard(weekData, isPastMonth))}
                 </div>
-
-                {/* Dinner section */}
-                <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
-                    {MEAL_ICONS.dinner}
-                    <Text style={{ fontSize: 12, color: "#78716c", fontWeight: 500 }}>
-                      {MEAL_LABELS.dinner}
-                    </Text>
-                  </div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
-                    {dinnerItems.map((item) => (
-                      <Popover
-                        key={item.id}
-                        content={dishPopover(item)}
-                        trigger="click"
-                        placement="bottom"
-                      >
-                        <Tag
-                          style={{
-                            cursor: "pointer",
-                            borderRadius: 10,
-                            border: item.is_manual ? "1px solid #8b5cf6" : undefined,
-                          }}
-                          color={item.is_manual ? "purple" : undefined}
-                        >
-                          {item.dish.name}
-                        </Tag>
-                      </Popover>
-                    ))}
-                    <Button
-                      type="text"
-                      size="small"
-                      style={{
-                        fontSize: 14,
-                        color: "#d4d4d8",
-                        padding: "0 4px",
-                        minWidth: 24,
-                        height: 24,
-                        borderRadius: 6,
-                      }}
-                      onClick={() => setAddTarget({ date: dateStr, meal_type: "dinner" })}
-                    >
-                      +
-                    </Button>
-                  </div>
-                </div>
-              </Card>
+              </div>
             );
           })}
         </div>
       )}
 
       {/* Replace Modal */}
-      {replaceItem && (
+      {replaceItem && replaceItem.id > 0 && (
         <div
           style={{
             position: "fixed",

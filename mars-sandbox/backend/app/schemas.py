@@ -314,6 +314,7 @@ class MealPlanItemResponse(BaseModel):
     dish: MealPlanItemDish
     sort_order: int
     is_manual: int
+    source: Optional[str] = None  # 'log' if from meal_log, 'plan' if from confirmed plan, None if AI draft
 
     class Config:
         from_attributes = True

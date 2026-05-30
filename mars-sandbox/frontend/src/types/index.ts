@@ -220,12 +220,13 @@ export interface MealPlanItem {
   dish: MealPlanItemDish;
   sort_order: number;
   is_manual: number;
+  source?: "log" | "plan" | null;
 }
 
 export interface MealPlan {
   id: number;
   week_start_date: string;
-  status: "draft" | "confirmed";
+  status: "draft" | "confirmed" | "log";
   items: MealPlanItem[];
   created_at: string;
   updated_at: string;
