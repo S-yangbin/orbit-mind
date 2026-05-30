@@ -87,11 +87,13 @@ def recognize_dishes(image_path: str) -> List[Dict[str, Any]]:
         "--message", prompt,
         "--text-only",
         "--output", "json",
-    ], timeout=60)
+    ], timeout=120)
 
     if not output:
         logger.warning("Dish recognition returned no output")
         return []
+
+    logger.info("Dish recognition raw output: %s", output[:500])
 
     # Extract text from JSON API response
     text = output
@@ -103,12 +105,16 @@ def recognize_dishes(image_path: str) -> List[Dict[str, Any]]:
                 text = choices[0]["message"].get("content", output)
             elif "output" in resp and "text" in resp["output"]:
                 text = resp["output"]["text"]
+            elif "content" in resp:
+                text = resp["content"]
     except (json.JSONDecodeError, TypeError, IndexError, KeyError):
         pass
 
+    logger.info("Dish recognition extracted text: %s", text[:500])
+
     dishes = _extract_json_array(text)
     if dishes is None:
-        logger.warning("Failed to parse dish recognition output: %s", output[:200])
+        logger.warning("Failed to parse dish recognition output: %s", output[:500])
         return []
 
     # Normalize results
@@ -119,6 +125,7 @@ def recognize_dishes(image_path: str) -> List[Dict[str, Any]]:
                 "name": d["name"].strip(),
                 "category": d.get("category", "荤菜").strip(),
             })
+    logger.info("Dish recognition result: %s", result)
     return result
 
 

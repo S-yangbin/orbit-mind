@@ -377,7 +377,7 @@ class MealLogCreate(BaseModel):
     rating: Optional[int] = None
     note: Optional[str] = None
     rated_by: Optional[str] = None
-    liked_by: Optional[List[int]] = None  # list of member_ids who liked
+    liked_by: Optional[Dict[str, List[int]]] = None  # dish_name -> [member_ids]
 
 
 class MealLogDishOutput(BaseModel):
@@ -394,7 +394,7 @@ class MealLogResponse(BaseModel):
     rating: Optional[int] = None
     note: Optional[str] = None
     rated_by: Optional[str] = None
-    liked_by: Optional[List[int]] = None
+    liked_by: Optional[Dict[str, List[int]]] = None  # dish_name -> [member_ids]
     created_at: datetime
 
     class Config:

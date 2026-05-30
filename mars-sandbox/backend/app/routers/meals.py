@@ -1,14 +1,17 @@
 """Meal planning and dish recognition router."""
+import io
 import json
 import logging
 import os
 import uuid
 from datetime import date, datetime, timedelta
-from typing import Optional
+from typing import Optional, List, Dict
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy import func, and_
 from sqlalchemy.orm import Session
+
+from PIL import Image as PILImage
 
 from ..config import settings
 from ..database import get_db
@@ -33,6 +36,14 @@ router = APIRouter(prefix="/api/meals", tags=["meals"])
 # ============================================================
 # Helpers
 # ============================================================
+
+def _normalize_liked_by(value) -> dict:
+    """Normalize liked_by field: old format is List[int], new format is Dict[str, List[int]]."""
+    parsed = _parse_json_field(value)
+    if isinstance(parsed, dict):
+        return parsed
+    # Old format was a flat list of member IDs — can't map to per-dish, return empty
+    return {}
 
 def _parse_json_field(value) -> any:
     """Parse a JSON string field, return parsed object or None."""
@@ -112,7 +123,6 @@ def _get_or_create_dish(db: Session, name: str, category: str = "荤菜", origin
         return dish
     dish = Dish(name=name, category=category, origin=origin, recipe=recipe or None)
     db.add(dish)
-    db.flush()
     return dish
 
 
@@ -310,15 +320,6 @@ async def generate_plan(
     today = date.today()
     start_date = payload.week_start_date or today
 
-    # Delete existing draft plans for the next 4 weeks
-    for week_offset in range(4):
-        week_start = start_date + timedelta(days=week_offset * 7)
-        monday = week_start - timedelta(days=week_start.weekday())
-        existing = db.query(MealPlan).filter(MealPlan.week_start_date == monday).first()
-        if existing and existing.status != "confirmed":
-            db.delete(existing)
-    db.flush()
-
     # Collect members
     _seed_default_members(db)
     members = db.query(FamilyMember).order_by(FamilyMember.id).all()
@@ -357,8 +358,23 @@ async def generate_plan(
     if not plan_data:
         raise HTTPException(status_code=502, detail="AI failed to generate plan")
 
-    # Create plans per week (group weekend days into their respective weeks)
+    # Phase 1: Pre-create/find all dishes and commit to get IDs
+    all_dishes = {}  # name -> Dish object
+    for day_entry in plan_data.get("days", []):
+        for meal_type in ["lunch", "dinner"]:
+            for dish_info in day_entry.get("meals", {}).get(meal_type, []):
+                name = dish_info.get("name", "").strip()
+                if name and name not in all_dishes:
+                    category = dish_info.get("category", "荤菜")
+                    recipe = dish_info.get("recipe", "")
+                    all_dishes[name] = _get_or_create_dish(db, name, category, origin="ai", recipe=recipe)
+    db.commit()
+    for d in all_dishes.values():
+        db.refresh(d)
+
+    # Phase 2: Create plans and items
     plans_by_week = {}  # week_start_date -> plan object
+    seen_dish_ids = {}  # (plan_id, date, meal_type) -> set of dish_ids (dedup)
     for day_entry in plan_data.get("days", []):
         day_date_str = day_entry.get("date")
         try:
@@ -370,32 +386,51 @@ async def generate_plan(
         monday = day_date - timedelta(days=day_date.weekday())
         if monday not in plans_by_week:
             plan_obj = db.query(MealPlan).filter(MealPlan.week_start_date == monday).first()
-            if not plan_obj:
+            if plan_obj and plan_obj.status == "confirmed":
+                plans_by_week[monday] = None
+                continue
+            if plan_obj:
+                # Delete existing AI items from draft plan
+                db.query(MealPlanItem).filter(
+                    MealPlanItem.meal_plan_id == plan_obj.id,
+                    MealPlanItem.is_manual == 0,
+                ).delete(synchronize_session=False)
+            else:
                 plan_obj = MealPlan(week_start_date=monday, status="draft")
                 db.add(plan_obj)
-                db.flush()
+            db.flush()
             plans_by_week[monday] = plan_obj
 
         plan_obj = plans_by_week[monday]
+        if plan_obj is None:
+            continue
         meals = day_entry.get("meals", {})
         for meal_type in ["lunch", "dinner"]:
             dish_list = meals.get(meal_type, [])
-            for idx, dish_info in enumerate(dish_list):
+            slot_key = (plan_obj.id, day_date, meal_type)
+            if slot_key not in seen_dish_ids:
+                seen_dish_ids[slot_key] = set()
+            sort_idx = 0
+            for dish_info in dish_list:
                 name = dish_info.get("name", "").strip()
                 if not name:
                     continue
-                category = dish_info.get("category", "荤菜")
-                recipe = dish_info.get("recipe", "")
-                dish = _get_or_create_dish(db, name, category, origin="ai", recipe=recipe)
+                dish = all_dishes.get(name)
+                if not dish or not dish.id:
+                    continue
+                if dish.id in seen_dish_ids[slot_key]:
+                    continue  # skip duplicate dish in same slot
+                seen_dish_ids[slot_key].add(dish.id)
                 item = MealPlanItem(
                     meal_plan_id=plan_obj.id,
                     date=day_date,
                     meal_type=meal_type,
                     dish_id=dish.id,
-                    sort_order=idx,
+                    sort_order=sort_idx,
                     is_manual=0,
                 )
                 db.add(item)
+                sort_idx += 1
 
     db.commit()
 
@@ -519,20 +554,30 @@ async def recognize_photo(
     db: Session = Depends(get_db),
     _=Depends(require_auth),
 ):
-    # Save photo
+    # Save photo — convert non-JPG to JPG
     month_dir = datetime.now().strftime("%Y-%m")
     save_dir = os.path.join(settings.MEAL_PHOTO_DIR, month_dir)
     os.makedirs(save_dir, exist_ok=True)
 
-    ext = os.path.splitext(image.filename or "photo.jpg")[1] or ".jpg"
-    filename = f"{uuid.uuid4().hex}{ext}"
+    filename = f"{uuid.uuid4().hex}.jpg"
     file_path = os.path.join(save_dir, filename)
 
     content = await image.read()
-    with open(file_path, "wb") as f:
-        f.write(content)
+    try:
+        img = PILImage.open(io.BytesIO(content))
+        if img.format != "JPEG":
+            img = img.convert("RGB")
+            img.save(file_path, "JPEG", quality=90)
+            logger.info("Converted image from %s to JPG: %s", img.format, file_path)
+        else:
+            with open(file_path, "wb") as f:
+                f.write(content)
+    except Exception as e:
+        logger.warning("Pillow conversion failed, saving raw: %s", e)
+        with open(file_path, "wb") as f:
+            f.write(content)
 
-    logger.info("Saved meal photo: %s (%d bytes)", file_path, len(content))
+    logger.info("Saved meal photo: %s (%d bytes)", file_path, os.path.getsize(file_path))
 
     # AI recognition
     dishes_raw = recognize_dishes(file_path)
@@ -570,17 +615,27 @@ async def create_meal_log(
 ):
     # Process dishes: create new ones if needed
     final_dishes = []
+    dish_objects = []  # hold Dish ORM objects for commit
     for d in payload.dishes:
         if d.dish_id:
             dish = db.query(Dish).filter(Dish.id == d.dish_id).first()
             if dish:
                 dish.photo_count += 1
                 final_dishes.append({"dish_id": dish.id, "name": dish.name})
+                dish_objects.append(dish)
                 continue
-        # Create new dish
+        # Create new dish (no flush needed — commit below assigns the ID)
         dish = _get_or_create_dish(db, d.name, origin="photo")
         dish.photo_count += 1
-        final_dishes.append({"dish_id": dish.id, "name": dish.name})
+        dish_objects.append(dish)
+
+    # Commit dishes first so new dishes get IDs
+    db.commit()
+    for dish in dish_objects:
+        db.refresh(dish)
+
+    # Now build final_dishes with resolved IDs
+    final_dishes = [{"dish_id": d.id, "name": d.name} for d in dish_objects]
 
     log = MealLog(
         date=payload.date,
@@ -591,19 +646,21 @@ async def create_meal_log(
         rated_by=payload.rated_by,
         rating=payload.rating,
         note=payload.note,
-        liked_by=json.dumps(payload.liked_by or [], ensure_ascii=False),
+        liked_by=json.dumps(payload.liked_by or {}, ensure_ascii=False),
     )
     db.add(log)
     db.commit()
     db.refresh(log)
 
-    # Update dish preferences for liked members
-    liked_member_ids = payload.liked_by or []
+    # Update dish preferences for liked members (per-dish structure)
+    liked_by_map: Dict[str, List[int]] = payload.liked_by or {}
     for d in final_dishes:
         dish_id = d.get("dish_id")
+        dish_name = d.get("name", "")
         if not dish_id:
             continue
-        for member_id in liked_member_ids:
+        member_ids = liked_by_map.get(dish_name, [])
+        for member_id in member_ids:
             pref = db.query(DishPreference).filter(
                 DishPreference.dish_id == dish_id,
                 DishPreference.member_id == member_id,
@@ -630,7 +687,7 @@ async def create_meal_log(
         rating=log.rating,
         note=log.note,
         rated_by=log.rated_by,
-        liked_by=_parse_json_field(log.liked_by) or [],
+        liked_by=_normalize_liked_by(log.liked_by),
         created_at=log.created_at,
     )
 
@@ -666,7 +723,7 @@ async def list_meal_logs(
             rating=log.rating,
             note=log.note,
             rated_by=log.rated_by,
-            liked_by=_parse_json_field(log.liked_by) or [],
+            liked_by=_normalize_liked_by(log.liked_by),
             created_at=log.created_at,
         ))
 

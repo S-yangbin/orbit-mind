@@ -99,6 +99,10 @@ echo "✓ Service 文件已更新"
 # 设置权限
 chown -R www-data:www-data /opt/mars-sandbox 2>/dev/null || true
 
+# 清理部署产物和macOS资源文件
+rm -f mars-sandbox-backend.tar.gz mars-sandbox-frontend.tar.gz mars-sandbox.service
+find /opt/mars-sandbox -maxdepth 2 -name '._*' -delete 2>/dev/null || true
+
 echo "✓ 部署完成"
 ENDSSH
 

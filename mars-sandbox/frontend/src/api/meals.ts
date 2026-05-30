@@ -113,7 +113,7 @@ export const createMealLog = async (
   rating?: number,
   note?: string,
   ratedBy?: string,
-  likedBy?: number[]
+  likedBy?: Record<string, number[]>
 ): Promise<MealLog> => {
   const { data } = await api.post<MealLog>("/api/meals/history", {
     image_path: imagePath,

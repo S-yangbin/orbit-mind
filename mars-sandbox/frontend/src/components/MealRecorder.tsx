@@ -57,7 +57,7 @@ export function MealRecorder() {
   const [saving, setSaving] = useState(false);
   const [newDishName, setNewDishName] = useState("");
   const [members, setMembers] = useState<FamilyMember[]>([]);
-  const [likedBy, setLikedBy] = useState<number[]>([]);
+  const [dishLikedBy, setDishLikedBy] = useState<Record<string, number[]>>({});
   const fileRef = useRef<HTMLInputElement>(null);
   const isMobile = useIsMobile();
 
@@ -121,7 +121,7 @@ export function MealRecorder() {
         rating || undefined,
         note || undefined,
         undefined,
-        likedBy.length > 0 ? likedBy : undefined
+        Object.keys(dishLikedBy).length > 0 ? dishLikedBy : undefined
       );
       message.success("用餐记录保存成功！");
       resetForm();
@@ -140,7 +140,7 @@ export function MealRecorder() {
     setEditDishes([]);
     setRating(0);
     setNote("");
-    setLikedBy([]);
+    setDishLikedBy({});
   };
 
   return (
@@ -254,6 +254,7 @@ export function MealRecorder() {
             renderItem={(d, idx) => {
               const original = recognizedDishes.find((r) => r.name === d.name);
               const matched = original?.matched ?? !!d.dish_id;
+              const likedMembers = dishLikedBy[d.name] || [];
               return (
                 <List.Item
                   actions={[
@@ -267,16 +268,46 @@ export function MealRecorder() {
                     />,
                   ]}
                 >
-                  <Space>
-                    {matched ? (
-                      <CheckCircleOutlined style={{ color: "#52c41a" }} />
-                    ) : (
-                      <span style={{ color: "#faad14" }} title="新菜品">!</span>
+                  <div style={{ width: "100%" }}>
+                    <Space>
+                      {matched ? (
+                        <CheckCircleOutlined style={{ color: "#52c41a" }} />
+                      ) : (
+                        <span style={{ color: "#faad14" }} title="新菜品">!</span>
+                      )}
+                      <Text>{d.name}</Text>
+                      {matched && <Tag color="green">已匹配</Tag>}
+                      {!matched && <Tag color="orange">新菜品</Tag>}
+                    </Space>
+                    {members.length > 0 && (
+                      <div style={{ marginTop: 6 }}>
+                        <Space size={4} wrap>
+                          <Text type="secondary" style={{ fontSize: 12 }}>谁喜欢:</Text>
+                          {members.map((m) => (
+                            <Button
+                              key={m.id}
+                              size="small"
+                              type={likedMembers.includes(m.id) ? "primary" : "default"}
+                              style={{ fontSize: 12, padding: "0 8px", height: 24 }}
+                              onClick={() => {
+                                setDishLikedBy((prev) => {
+                                  const cur = prev[d.name] || [];
+                                  return {
+                                    ...prev,
+                                    [d.name]: cur.includes(m.id)
+                                      ? cur.filter((id) => id !== m.id)
+                                      : [...cur, m.id],
+                                  };
+                                });
+                              }}
+                            >
+                              {m.avatar} {m.name}
+                            </Button>
+                          ))}
+                        </Space>
+                      </div>
                     )}
-                    <Text>{d.name}</Text>
-                    {matched && <Tag color="green">已匹配</Tag>}
-                    {!matched && <Tag color="orange">新菜品</Tag>}
-                  </Space>
+                  </div>
                 </List.Item>
               );
             }}
@@ -300,32 +331,6 @@ export function MealRecorder() {
             <Text strong>评分: </Text>
             <Rate value={rating} onChange={setRating} />
           </div>
-
-          {members.length > 0 && (
-            <div style={{ marginBottom: 12 }}>
-              <Text strong style={{ display: "block", marginBottom: 8 }}>
-                谁点赞:
-              </Text>
-              <Space wrap>
-                {members.map((m) => (
-                    <Button
-                      key={m.id}
-                      size="small"
-                      type={likedBy.includes(m.id) ? "primary" : "default"}
-                      onClick={() => {
-                        setLikedBy((prev) =>
-                          prev.includes(m.id)
-                            ? prev.filter((id) => id !== m.id)
-                            : [...prev, m.id]
-                        );
-                      }}
-                    >
-                      {m.avatar} {m.name}
-                    </Button>
-                  ))}
-              </Space>
-            </div>
-          )}
 
           <div style={{ marginBottom: 16 }}>
             <Text strong>备注: </Text>

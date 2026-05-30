@@ -259,7 +259,7 @@ export interface MealLog {
   rating: number | null;
   note: string | null;
   rated_by: string | null;
-  liked_by: number[];
+  liked_by: Record<string, number[]>;
   created_at: string;
 }
 
