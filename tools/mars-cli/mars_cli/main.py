@@ -5,7 +5,7 @@
 
 配置方式（二选一）:
   1. 环境变量:
-     export MARS_SANDBOX_URL=http://8.213.135.161:8888
+     export MARS_SANDBOX_URL=http://<your-server-ip>:<port>
      export MARS_SANDBOX_API_KEY=your-api-key
   2. 命令行参数（优先级更高）:
      mars-cli --url http://... --api-key xxx <command>
@@ -58,7 +58,7 @@ def main(
         None,
         "--url",
         envvar="MARS_SANDBOX_URL",
-        help="mars-sandbox 服务端地址，如 http://8.213.135.161:8888。也可通过 MARS_SANDBOX_URL 环境变量设置。",
+        help="mars-sandbox 服务端地址，如 http://<your-server-ip>:<port>。也可通过 MARS_SANDBOX_URL 环境变量设置。",
     ),
     api_key: Optional[str] = typer.Option(
         None,

@@ -17,7 +17,7 @@ agent:
   audit_log_dir: null                # 审计日志目录，null 默认 ~/orbit-mind/logs/
   
   # WebSocket 配置
-  mars_sandbox_url: "ws://8.213.135.161:8888"  # mars-sandbox WebSocket 地址
+  mars_sandbox_url: "ws://<your-server-ip>:<port>"  # mars-sandbox WebSocket 地址
   node_secret: "your-node-secret"              # 节点密钥（用于 WebSocket 连接认证）
   heartbeat_interval: 60                       # 心跳间隔（秒）
   reconnect_delay: 5                           # 重连延迟（秒）

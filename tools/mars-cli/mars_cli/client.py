@@ -27,7 +27,7 @@ def load_config_file(config_path: Optional[str] = None) -> Dict[str, Any]:
 
     配置文件格式示例:
         {
-            "url": "http://8.213.135.161:8888",
+            "url": "http://<your-server-ip>:<port>",
             "api_key": "your-secret-key",
             "default_node": "my-node",
             "default_timeout": 30
@@ -120,7 +120,7 @@ class MarsClient:
             print(
                 "ERROR: 未配置 mars-sandbox 服务地址。请通过以下任一方式配置:\n"
                 "  1. 命令行: mars-cli --url http://... <command>\n"
-                "  2. 环境变量: export MARS_SANDBOX_URL=http://8.213.135.161:8888\n"
+                "  2. 环境变量: export MARS_SANDBOX_URL=http://<your-server-ip>:<port>\n"
                 "  3. 配置文件: 创建 mars-cli.json 写入 {\"url\": \"http://...\", \"api_key\": \"...\"}\n"
                 "     支持路径: ./mars-cli.json, ~/.config/mars-cli/config.json, ~/.mars-cli.json",
                 file=sys.stderr,

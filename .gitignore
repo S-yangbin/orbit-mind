@@ -43,9 +43,10 @@ mars-sandbox/mars-sandbox-backend.tar.gz
 mars-sandbox/backend/mars_sandbox_test.db
 
 node_modules/
+pnpm-lock.yaml
+uv.lock
 
 tools/epd_tool/daily_quote.png
-tools/epd_tool/uv.lock
 .qoder
 *.tar.gz
 tsconfig.tsbuildinfo

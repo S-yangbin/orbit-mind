@@ -5,6 +5,7 @@
 
 import asyncio
 import json
+import os
 import sys
 import time
 from datetime import datetime
@@ -19,9 +20,12 @@ except ImportError:
 
 async def test_websocket_connection():
     """测试WebSocket连接"""
-    server_url = "ws://localhost:8888"
+    server_url = os.getenv("MARS_SANDBOX_URL", "ws://localhost:8888")
     node_id = "test-node-001"
-    secret = "<your-node-api-key>"  # 使用.env中的NODE_API_KEY
+    secret = os.getenv("NODE_API_KEY", "")
+    if not secret:
+        print("错误: 请设置 NODE_API_KEY 环境变量")
+        return False
     
     url = f"{server_url}/ws/agent/{node_id}?secret={secret}"
     
@@ -85,8 +89,11 @@ async def test_http_api():
     """测试HTTP API发送命令"""
     import requests
     
-    server_url = "http://localhost:8888"
-    api_key = "<your-node-api-key>"  # 使用.env中的NODE_API_KEY
+    server_url = os.getenv("MARS_SANDBOX_URL", "http://localhost:8888")
+    api_key = os.getenv("NODE_API_KEY", "")
+    if not api_key:
+        print("错误: 请设置 NODE_API_KEY 环境变量")
+        return False
     
     print(f"\n测试HTTP API: {server_url}/api/commands")
     
