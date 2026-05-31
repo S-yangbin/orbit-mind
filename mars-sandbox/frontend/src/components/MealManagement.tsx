@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Tabs } from "antd";
 import {
   CalendarOutlined,
@@ -50,11 +51,14 @@ const TAB_ITEMS = [
 ];
 
 export function MealManagement() {
+  const [activeKey, setActiveKey] = useState("plan");
   return (
     <div>
       <Tabs
         items={TAB_ITEMS}
-        defaultActiveKey="plan"
+        activeKey={activeKey}
+        onChange={setActiveKey}
+        destroyInactiveTabPane
         size="large"
       />
     </div>

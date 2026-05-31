@@ -46,9 +46,9 @@ export const createDish = async (payload: DishCreateData): Promise<Dish> => {
 };
 
 // --- Meal Plan ---
-export const fetchCurrentPlans = async (): Promise<MealPlan[]> => {
-  const { data } = await api.get<{ plans: MealPlan[] }>("/api/meals/plan/current");
-  return data.plans || [];
+export const fetchCurrentPlans = async (): Promise<{ plans: MealPlan[]; datePhotos: Record<string, string> }> => {
+  const { data } = await api.get<{ plans: MealPlan[]; date_photos?: Record<string, string> }>("/api/meals/plan/current");
+  return { plans: data.plans || [], datePhotos: data.date_photos || {} };
 };
 
 export const generatePlan = async (weekStartDate?: string): Promise<MealPlan> => {

@@ -140,8 +140,10 @@ export function MealRecorder() {
       );
       message.success("用餐记录保存成功！");
       resetForm();
-    } catch {
-      message.error("保存失败");
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail || err?.message || '';
+      console.error('保存用餐记录失败:', err);
+      message.error(`保存失败${detail ? '：' + detail : ''}`);
     } finally {
       setSaving(false);
     }

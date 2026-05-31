@@ -118,12 +118,22 @@ def _plan_item_to_response(item: MealPlanItem, source: Optional[str] = None) -> 
 
 
 def _get_or_create_dish(db: Session, name: str, category: str = "荤菜", origin: str = "ai", recipe: str = "") -> Dish:
-    """Find dish by name or create it."""
+    """Find dish by name or create it. Handles race conditions."""
+    name = name.strip()
     dish = db.query(Dish).filter(Dish.name == name).first()
     if dish:
         return dish
     dish = Dish(name=name, category=category, origin=origin, recipe=recipe or None)
     db.add(dish)
+    try:
+        db.flush()
+    except Exception:
+        db.rollback()
+        # Race condition: another request created the dish
+        dish = db.query(Dish).filter(Dish.name == name).first()
+        if dish:
+            return dish
+        raise
     return dish
 
 
@@ -306,6 +316,7 @@ async def get_current_plan(
     # Build meal_log lookup: date -> {meal_type -> dishes}
     log_lookup: dict = {}
     log_date_dish_names: dict = {}  # date -> set of dish names
+    log_date_photos: dict = {}  # date -> latest image_path
     for log in meal_logs:
         log_date = log.date
         if log_date not in log_lookup:
@@ -316,6 +327,9 @@ async def get_current_plan(
         for d in dishes:
             if isinstance(d, dict) and "name" in d:
                 log_date_dish_names[log_date].add(d["name"])
+        # Track the latest photo per date
+        if log.image_path:
+            log_date_photos[log_date] = log.image_path
 
     result = []
     # Track which (date, meal_type) slots we've processed (to avoid duplicates)
@@ -416,7 +430,9 @@ async def get_current_plan(
 
     # Sort by week_start_date
     result.sort(key=lambda x: x["week_start_date"] if isinstance(x["week_start_date"], date) else date.fromisoformat(str(x["week_start_date"])))
-    return {"plans": result}
+    # Convert log_date_photos keys to string for JSON
+    photos_map = {d.isoformat(): p for d, p in log_date_photos.items()}
+    return {"plans": result, "date_photos": photos_map}
 
 
 @router.post("/plan/generate", response_model=MealPlanResponse)
@@ -720,29 +736,58 @@ async def create_meal_log(
     db: Session = Depends(get_db),
     _=Depends(require_auth),
 ):
-    # Process dishes: create new ones if needed
-    final_dishes = []
-    dish_objects = []  # hold Dish ORM objects for commit
+    logger.info("create_meal_log called: date=%s, meal_type=%s, dishes=%d, image=%s",
+                payload.date, payload.meal_type, len(payload.dishes), payload.image_path)
+
+    if not payload.dishes:
+        raise HTTPException(status_code=400, detail="至少需要一道菜品")
+
+    # Process dishes: create new ones if needed, track seen IDs to avoid duplicates
+    dish_objects: Dict[int, Dish] = {}  # id -> Dish (dedup)
+    new_dish_names: set = set()
     for d in payload.dishes:
         if d.dish_id:
             dish = db.query(Dish).filter(Dish.id == d.dish_id).first()
             if dish:
-                dish.photo_count += 1
-                final_dishes.append({"dish_id": dish.id, "name": dish.name})
-                dish_objects.append(dish)
+                if dish.id not in dish_objects:
+                    dish_objects[dish.id] = dish
                 continue
-        # Create new dish (no flush needed — commit below assigns the ID)
-        dish = _get_or_create_dish(db, d.name, origin="photo")
-        dish.photo_count += 1
-        dish_objects.append(dish)
+        # Create or find dish by name
+        name = d.name.strip()
+        if not name:
+            continue
+        # Check if we already processed this name in this request
+        already_added = any(do.name == name for do in dish_objects.values())
+        if already_added:
+            continue
+        dish = _get_or_create_dish(db, name, origin="photo")
+        if dish.id and dish.id in dish_objects:
+            continue  # same dish found by name as an earlier dish_id
+        if dish.id:
+            dish_objects[dish.id] = dish
+        else:
+            # Newly added, not yet flushed — use a temp key
+            dish_objects[id(dish)] = dish
+            new_dish_names.add(name)
+
+    # Increment photo_count for all collected dishes
+    for dish in dish_objects.values():
+        dish.photo_count = (dish.photo_count or 0) + 1
 
     # Commit dishes first so new dishes get IDs
-    db.commit()
-    for dish in dish_objects:
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.error("Failed to commit dishes: %s", e)
+        raise HTTPException(status_code=500, detail="保存菜品时出错")
+
+    for dish in dish_objects.values():
         db.refresh(dish)
 
     # Now build final_dishes with resolved IDs
-    final_dishes = [{"dish_id": d.id, "name": d.name} for d in dish_objects]
+    final_dishes = [{"dish_id": d.id, "name": d.name} for d in dish_objects.values()]
+    logger.info("Resolved dishes: %s", final_dishes)
 
     log = MealLog(
         date=payload.date,
@@ -756,7 +801,12 @@ async def create_meal_log(
         liked_by=json.dumps(payload.liked_by or {}, ensure_ascii=False),
     )
     db.add(log)
-    db.commit()
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.error("Failed to commit meal log: %s", e)
+        raise HTTPException(status_code=500, detail="保存用餐记录时出错")
     db.refresh(log)
 
     # Update dish preferences for liked members (per-dish structure)
@@ -783,7 +833,12 @@ async def create_meal_log(
                     last_liked_at=datetime.utcnow(),
                 )
                 db.add(pref)
-    db.commit()
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.warning("Failed to update dish preferences: %s", e)
+        # Non-critical — meal log was already saved
 
     return MealLogResponse(
         id=log.id,

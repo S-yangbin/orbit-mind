@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import {
   Button,
   Card,
@@ -11,6 +11,7 @@ import {
   Typography,
   Empty,
   Divider,
+  Image,
 } from "antd";
 import {
   ThunderboltOutlined,
@@ -19,6 +20,7 @@ import {
   SwapOutlined,
   HistoryOutlined,
   PlusOutlined,
+  ReloadOutlined,
 } from "@ant-design/icons";
 import type { MealPlan, MealPlanItem, Dish } from "../types";
 import {
@@ -84,6 +86,11 @@ function isToday(dateStr: string): boolean {
   return d.toDateString() === today.toDateString();
 }
 
+function photoPathToUrl(path: string): string {
+  // Convert /data/meals/2025-05/xxx.jpg -> /meal-photos/2025-05/xxx.jpg
+  return path.replace(/^\/data\/meals\//, "/meal-photos/");
+}
+
 interface WeekData {
   plan: MealPlan;
   dates: string[];
@@ -97,26 +104,42 @@ export function MealPlanner() {
   const [dishes, setDishes] = useState<Dish[]>([]);
   const [replaceItem, setReplaceItem] = useState<MealPlanItem | null>(null);
   const [addTarget, setAddTarget] = useState<{ date: string; meal_type: string } | null>(null);
+  const [datePhotos, setDatePhotos] = useState<Record<string, string>>({});
+  const [refreshing, setRefreshing] = useState(false);
   const isMobile = useIsMobile();
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
+  const loadData = useCallback(async (showRefreshing = false) => {
+    if (showRefreshing) setRefreshing(true);
     try {
-      const [plansData, dishData] = await Promise.all([
-        fetchCurrentPlans(),
-        fetchDishes(1, 200),
-      ]);
+      const { plans: plansData, datePhotos: photos } = await fetchCurrentPlans();
+      const dishData = await fetchDishes(1, 200);
       setPlans(plansData);
       setDishes(dishData.items);
+      setDatePhotos(photos);
     } catch {
       message.error("加载菜单失败");
     } finally {
       setLoading(false);
+      if (showRefreshing) setRefreshing(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  // Auto-refresh when the tab becomes visible again
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        loadData(true);
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, [loadData]);
+
+  const handleRefresh = () => loadData(true);
 
   // Group plans by month
   const weeksByMonth = useMemo(() => {
@@ -179,8 +202,7 @@ export function MealPlanner() {
     setGenerating(true);
     try {
       await generatePlan();
-      const allPlans = await fetchCurrentPlans();
-      setPlans(allPlans);
+      await loadData();
       message.success("未来一个月周末菜单生成成功！可以手动调整后确认");
     } catch (e: any) {
       message.error(e?.response?.data?.detail || "AI 生成菜单失败，请稍后重试");
@@ -219,7 +241,7 @@ export function MealPlanner() {
     if (!replaceItem || replaceItem.id < 0) return;
     try {
       await replacePlanItem(replaceItem.id, dishId);
-      loadData();
+      await loadData();
       setReplaceItem(null);
       message.success("已替换");
     } catch {
@@ -231,7 +253,7 @@ export function MealPlanner() {
     if (!addTarget) return;
     try {
       await addPlanItem(addTarget.date, addTarget.meal_type, dishId);
-      loadData();
+      await loadData();
       setAddTarget(null);
       message.success("已添加");
     } catch {
@@ -305,6 +327,7 @@ export function MealPlanner() {
       const isPast = isPastDate(dateStr);
       const today = isToday(dateStr);
       const isLogOnly = plan.status === "log";
+      const photoUrl = datePhotos[dateStr] ? photoPathToUrl(datePhotos[dateStr]) : null;
 
       return (
         <div
@@ -411,63 +434,84 @@ export function MealPlanner() {
               )}
             </div>
 
-            {/* Dish chips */}
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
-              {lunchItems.map((item) => {
-                const catColor = CATEGORY_COLORS[item.dish.category] || "#f3f4f6";
-                return (
-                  <Popover
-                    key={item.id}
-                    content={dishPopover(item, isPast)}
-                    trigger="click"
-                    placement="bottom"
-                  >
-                    <Tag
-                      style={{
-                        cursor: "pointer",
-                        borderRadius: 8,
-                        border: "none",
-                        background: item.source === "log" ? "#dcfce7" : catColor,
-                        color: isPast ? "#6b7280" : "#374151",
-                        fontSize: 13,
-                        padding: "2px 10px",
-                        lineHeight: "24px",
-                        fontWeight: 500,
-                        transition: "opacity 0.15s",
-                      }}
-                    >
-                      {item.dish.name}
-                    </Tag>
-                  </Popover>
-                );
-              })}
-              {!isPast && (
-                <div
+            {/* Photo thumbnail + Dish chips row */}
+            <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+              {/* Meal photo thumbnail */}
+              {photoUrl && (
+                <Image
+                  src={photoUrl}
+                  alt={`${dateStr} 午餐`}
+                  width={isMobile ? 56 : 64}
+                  height={isMobile ? 56 : 64}
                   style={{
-                    width: 26,
-                    height: 26,
                     borderRadius: 8,
-                    border: "1px dashed #d1d5db",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    cursor: "pointer",
-                    color: "#9ca3af",
-                    transition: "border-color 0.15s, color 0.15s",
+                    objectFit: "cover",
+                    flexShrink: 0,
+                    border: "1px solid #e5e7eb",
                   }}
-                  onClick={() => setAddTarget({ date: dateStr, meal_type: "lunch" })}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = "#f59e0b";
-                    e.currentTarget.style.color = "#f59e0b";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = "#d1d5db";
-                    e.currentTarget.style.color = "#9ca3af";
-                  }}
-                >
-                  <PlusOutlined style={{ fontSize: 12 }} />
-                </div>
+                  preview={{ src: photoUrl }}
+                  fallback="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIGZpbGw9IiNmM2Y0ZjYiLz48dGV4dCB4PSIzMiIgeT0iMzYiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiM5Y2EzYWYiIGZvbnQtc2l6ZT0iMTIiPjwvdGV4dD48L3N2Zz4="
+                />
               )}
+
+              {/* Dish chips */}
+              <div style={{ flex: 1, display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+                {lunchItems.map((item) => {
+                  const catColor = CATEGORY_COLORS[item.dish.category] || "#f3f4f6";
+                  return (
+                    <Popover
+                      key={item.id}
+                      content={dishPopover(item, isPast)}
+                      trigger="click"
+                      placement="bottom"
+                    >
+                      <Tag
+                        style={{
+                          cursor: "pointer",
+                          borderRadius: 8,
+                          border: "none",
+                          background: item.source === "log" ? "#dcfce7" : catColor,
+                          color: isPast ? "#6b7280" : "#374151",
+                          fontSize: 13,
+                          padding: "2px 10px",
+                          lineHeight: "24px",
+                          fontWeight: 500,
+                          transition: "opacity 0.15s",
+                        }}
+                      >
+                        {item.dish.name}
+                      </Tag>
+                    </Popover>
+                  );
+                })}
+                {!isPast && (
+                  <div
+                    style={{
+                      width: 26,
+                      height: 26,
+                      borderRadius: 8,
+                      border: "1px dashed #d1d5db",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      cursor: "pointer",
+                      color: "#9ca3af",
+                      transition: "border-color 0.15s, color 0.15s",
+                    }}
+                    onClick={() => setAddTarget({ date: dateStr, meal_type: "lunch" })}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.borderColor = "#f59e0b";
+                      e.currentTarget.style.color = "#f59e0b";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.borderColor = "#d1d5db";
+                      e.currentTarget.style.color = "#9ca3af";
+                    }}
+                  >
+                    <PlusOutlined style={{ fontSize: 12 }} />
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -507,6 +551,14 @@ export function MealPlanner() {
             </Button>
           )}
         </Space>
+        <Button
+          icon={<ReloadOutlined spin={refreshing} />}
+          onClick={handleRefresh}
+          loading={refreshing}
+          style={{ borderRadius: 8 }}
+        >
+          刷新
+        </Button>
       </div>
 
       {sortedMonthKeys.length === 0 ? (
