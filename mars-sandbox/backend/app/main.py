@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from .config import settings
 from .database import init_db, SessionLocal, engine
 from .auth import get_current_user
-from .routers import auth, pages, tags, scan, nodes, commands, videos, meals
+from .routers import auth, pages, tags, scan, nodes, commands, videos, meals, drive
 from .scanner import scan_directories
 from .ws.router import router as ws_router
 
@@ -36,6 +36,26 @@ def _migrate_db():
             conn.execute(text("ALTER TABLE pages ADD COLUMN category VARCHAR(32) NOT NULL DEFAULT 'work'"))
             conn.commit()
         logger.info("Migration: added 'category' column to pages table")
+
+    # drive_files: add is_dir and parent_id columns (only if table exists)
+    if 'drive_files' in inspector.get_table_names():
+        drive_cols = [col['name'] for col in inspector.get_columns('drive_files')]
+        if 'is_dir' not in drive_cols:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE drive_files ADD COLUMN is_dir TINYINT NOT NULL DEFAULT 0"))
+                conn.execute(text("ALTER TABLE drive_files ADD INDEX ix_drive_files_is_dir (is_dir)"))
+                conn.commit()
+            logger.info("Migration: added 'is_dir' column to drive_files table")
+        if 'parent_id' not in drive_cols:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE drive_files ADD COLUMN parent_id INT NULL"))
+                conn.execute(text("ALTER TABLE drive_files ADD INDEX ix_drive_files_parent_id (parent_id)"))
+                conn.execute(text(
+                    "ALTER TABLE drive_files ADD CONSTRAINT fk_drive_files_parent "
+                    "FOREIGN KEY (parent_id) REFERENCES drive_files(id) ON DELETE CASCADE"
+                ))
+                conn.commit()
+            logger.info("Migration: added 'parent_id' column to drive_files table")
 
 
 def _start_background_scan():
@@ -105,6 +125,7 @@ app.include_router(nodes.router)
 app.include_router(commands.router)
 app.include_router(videos.router)
 app.include_router(meals.router)
+app.include_router(drive.router)
 app.include_router(ws_router)  # WebSocket路由
 
 

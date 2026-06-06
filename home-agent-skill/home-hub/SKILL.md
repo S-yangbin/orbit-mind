@@ -12,7 +12,7 @@ metadata:
     requires_toolsets: [terminal]
 required_environment_variables:
   - name: MARS_SANDBOX_URL
-    prompt: mars-sandbox 服务地址（如 http://8.213.135.161:8888）
+    prompt: mars-sandbox 服务地址（如 http://<your-server-ip>:8888）
     help: mars-sandbox 服务的 HTTP API 地址
     required_for: 发送命令到家庭服务器
   - name: MARS_SANDBOX_API_KEY
@@ -105,7 +105,7 @@ Hermes → mars-sandbox (HTTP API) → WebSocket → home-agent → 执行命令
 使用前需要设置以下环境变量：
 
 ```bash
-export MARS_SANDBOX_URL="http://8.213.135.161:8888"
+export MARS_SANDBOX_URL="http://<your-server-ip>:8888"
 export MARS_SANDBOX_API_KEY="your-api-key"
 ```
 

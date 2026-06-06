@@ -441,3 +441,65 @@ class DishLikedByResponse(BaseModel):
     dish_id: int
     dish_name: str
     liked_by: List[Dict[str, Any]]  # [{"member_id": 1, "member_name": "...", "like_count": 3}]
+
+
+# ============================================================
+# Cloud Drive Schemas
+# ============================================================
+
+class DriveFileResponse(BaseModel):
+    id: int
+    filename: str
+    oss_key: str
+    file_size: int
+    content_type: str
+    uploaded_by: str
+    is_dir: int
+    parent_id: Optional[int] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class DriveFileListResponse(BaseModel):
+    total: int
+    page: int
+    page_size: int
+    items: List[DriveFileResponse]
+    breadcrumbs: List[Dict[str, Any]] = []  # [{"id": 1, "filename": "folder"}]
+
+
+class DriveFileCreate(BaseModel):
+    """Request body after frontend uploads to OSS directly."""
+    filename: str
+    oss_key: str
+    file_size: int
+    content_type: str = ""
+    parent_id: Optional[int] = None
+
+
+class DriveFolderCreate(BaseModel):
+    """Create a new folder."""
+    filename: str
+    parent_id: Optional[int] = None
+
+
+class DriveFileMove(BaseModel):
+    """Move a file or folder to a target directory."""
+    target_parent_id: Optional[int] = None  # None = root
+
+
+class DriveFileCopy(BaseModel):
+    """Copy a file to a target directory."""
+    target_parent_id: Optional[int] = None  # None = root
+
+
+class STSTokenResponse(BaseModel):
+    access_key_id: str
+    access_key_secret: str
+    security_token: str
+    expiration: str
+    region: str
+    bucket: str
+    prefix: str

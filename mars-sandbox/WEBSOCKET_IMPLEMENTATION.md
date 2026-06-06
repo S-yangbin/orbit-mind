@@ -147,10 +147,10 @@ cd /Users/syb/workspace/orbit-mind/mars-sandbox
 
 ```bash
 # 1. 上传代码
-scp -r backend/* root@8.213.135.161:/opt/mars-sandbox/
+scp -r backend/* root@<your-server-ip>:/opt/mars-sandbox/
 
 # 2. 安装依赖
-ssh root@8.213.135.161
+ssh root@<your-server-ip>
 cd /opt/mars-sandbox
 source venv/bin/activate
 pip install -r requirements.txt
@@ -160,14 +160,14 @@ nano .env
 # NODE_API_KEY=your-secret-key
 
 # 4. 安装服务
-scp mars-sandbox.service root@8.213.135.161:/etc/systemd/system/
-ssh root@8.213.135.161
+scp mars-sandbox.service root@<your-server-ip>:/etc/systemd/system/
+ssh root@<your-server-ip>
 systemctl daemon-reload
 systemctl enable mars-sandbox
 systemctl start mars-sandbox
 
 # 5. 验证
-curl http://8.213.135.161:8888/health
+curl http://<your-server-ip>:8888/health
 ```
 
 ## 测试流程
@@ -183,7 +183,7 @@ python main.py
 
 ```bash
 cd ~/orbit-mind/home-agent-skill/home-hub/scripts
-export MARS_SANDBOX_URL="http://8.213.135.161:8888"
+export MARS_SANDBOX_URL="http://<your-server-ip>:8888"
 export MARS_SANDBOX_API_KEY="your-secret-key"
 
 python send_command.py "test-node-001" "echo Hello" --timeout 10
@@ -224,7 +224,7 @@ PORT=8888
 ```yaml
 agent:
   node_id: "home-server-01"
-  mars_sandbox_url: "ws://8.213.135.161:8888"
+  mars_sandbox_url: "ws://<your-server-ip>:8888"
   node_secret: "your-secret-key-here"
   heartbeat_interval: 60
   reconnect_delay: 5
@@ -267,16 +267,16 @@ agent:
 
 ```bash
 # 查看mars-sandbox日志
-ssh root@8.213.135.161 'journalctl -u mars-sandbox -f'
+ssh root@<your-server-ip> 'journalctl -u mars-sandbox -f'
 
 # 查看home-agent日志
 journalctl -u home-agent -f
 
 # 查看在线节点
-curl -s -H "X-API-Key: xxx" http://8.213.135.161:8888/api/nodes | jq '.online'
+curl -s -H "X-API-Key: xxx" http://<your-server-ip>:8888/api/nodes | jq '.online'
 
 # 查看WebSocket连接数
-ssh root@8.213.135.161 'journalctl -u mars-sandbox | grep "已注册" | tail -1'
+ssh root@<your-server-ip> 'journalctl -u mars-sandbox | grep "已注册" | tail -1'
 ```
 
 ## 后续优化

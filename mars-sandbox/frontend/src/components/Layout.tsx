@@ -8,6 +8,7 @@ import {
   ClusterOutlined,
   PlayCircleOutlined,
   CoffeeOutlined,
+  CloudOutlined,
   MenuOutlined,
 } from "@ant-design/icons";
 import { useAuth } from "../hooks/useAuth";
@@ -20,6 +21,7 @@ const NAV_ITEMS = [
   { key: "/nodes", icon: <ClusterOutlined />, label: "节点" },
   { key: "/videos", icon: <PlayCircleOutlined />, label: "视频" },
   { key: "/meals", icon: <CoffeeOutlined />, label: "吃什么" },
+  { key: "/drive", icon: <CloudOutlined />, label: "云盘" },
 ];
 
 export function Layout() {

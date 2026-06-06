@@ -79,6 +79,7 @@ class Settings:
     OSS_BUCKET: str = os.getenv("OSS_BUCKET", "sybuddy")
     OSS_ACCESS_KEY_ID: str = os.getenv("OSS_ACCESS_KEY_ID", "")
     OSS_ACCESS_KEY_SECRET: str = os.getenv("OSS_ACCESS_KEY_SECRET", "")
+    OSS_ROLE_ARN: str = os.getenv("OSS_ROLE_ARN", "")
 
     @property
     def oss_video_base_url(self) -> str:

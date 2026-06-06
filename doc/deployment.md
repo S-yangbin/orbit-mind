@@ -26,20 +26,20 @@
 
 ### 目标机器
 
-与 Hermes Agent 同一台服务器 `root@8.213.135.161`，监听端口 8888。
+与 Hermes Agent 同一台服务器 `root@<your-server-ip>`，监听端口 8888。
 
-> **重要**：MySQL 数据库配置了 IP 白名单，仅 `8.213.135.161` 可连接。
+> **重要**：MySQL 数据库配置了 IP 白名单，仅 `<your-server-ip>` 可连接。
 
 ### 步骤 1：传输代码
 
 ```bash
-scp -r mars-sandbox/ root@8.213.135.161:~/mars-sandbox/
+scp -r mars-sandbox/ root@<your-server-ip>:~/mars-sandbox/
 ```
 
 ### 步骤 2：安装依赖
 
 ```bash
-ssh root@8.213.135.161
+ssh root@<your-server-ip>
 cd ~/mars-sandbox/backend
 pip3 install -r requirements.txt
 ```
@@ -129,7 +129,7 @@ agent:
   audit_log_dir: null           # 默认 ~/orbit-mind/logs/
   
   # WebSocket 配置
-  mars_sandbox_url: "ws://8.213.135.161:8888"  # mars-sandbox WebSocket 地址
+  mars_sandbox_url: "ws://<your-server-ip>:8888"  # mars-sandbox WebSocket 地址
   node_secret: "your-node-secret-here"          # 节点密钥
   heartbeat_interval: 60                        # 心跳间隔（秒）
   reconnect_delay: 5                            # 重连延迟（秒）
@@ -148,7 +148,7 @@ python3 home-agent/main.py -c home-agent/config.yaml
 ```
 Home Agent 启动
 节点 ID: home-server-01
-mars-sandbox: ws://8.213.135.161:8888
+mars-sandbox: ws://<your-server-ip>:8888
 工作目录: /home/syb
 最大超时: 120s
 WebSocket 连接成功
@@ -180,7 +180,7 @@ mkdir -p ~/orbit-mind/logs
 # 创建 .env 文件
 cat > ~/orbit-mind/home-agent/.env << 'EOF'
 HOME_AGENT_NODE_ID=home-server-01
-MARS_SANDBOX_URL=ws://8.213.135.161:8888
+MARS_SANDBOX_URL=ws://<your-server-ip>:8888
 HOME_AGENT_NODE_SECRET=your-node-secret-here
 EOF
 chmod 600 ~/orbit-mind/home-agent/.env
@@ -210,13 +210,13 @@ Hermes Agent 所在的云服务器。
 
 ```bash
 # 在本地
-scp -r home-agent-skill/home-hub/ root@8.213.135.161:~/.hermes/skills/smart-home/
+scp -r home-agent-skill/home-hub/ root@<your-server-ip>:~/.hermes/skills/smart-home/
 ```
 
 ### 步骤 2：安装 Skill 依赖
 
 ```bash
-ssh root@8.213.135.161
+ssh root@<your-server-ip>
 pip3 install --break-system-packages requests
 # 或使用虚拟环境：
 # pip3 install requests
@@ -228,7 +228,7 @@ pip3 install --break-system-packages requests
 
 ```bash
 cat >> ~/.hermes/.env << 'EOF'
-MARS_SANDBOX_URL=http://8.213.135.161:8888
+MARS_SANDBOX_URL=http://<your-server-ip>:8888
 MARS_SANDBOX_API_KEY=<your-node-api-key>
 EOF
 ```
@@ -249,7 +249,7 @@ hermes restart
 ### 步骤 5：验证 Skill
 
 ```bash
-ssh root@8.213.135.161
+ssh root@<your-server-ip>
 cd ~/.hermes/skills/smart-home/home-hub
 
 # 发送测试命令（同步等待结果）
@@ -394,7 +394,7 @@ sudo systemctl status home-agent
 sudo journalctl -u home-agent | grep -i -E "websocket|connect|heartbeat"
 
 # 检查 mars-sandbox 是否可访问
-curl -s http://8.213.135.161:8888/health
+curl -s http://<your-server-ip>:8888/health
 
 # 重启服务重新建立 WebSocket 连接
 sudo systemctl restart home-agent
@@ -412,7 +412,7 @@ sudo systemctl status home-agent
 sudo journalctl -u home-agent | grep -i reconnect
 
 # 检查网络稳定性
-ping 8.213.135.161
+ping <your-server-ip>
 
 # 重启服务
 sudo systemctl restart home-agent
@@ -446,7 +446,7 @@ sudo systemctl start home-agent
 
 ```bash
 # 传输新版本
-scp -r home-agent-skill/home-hub/* root@8.213.135.161:~/.hermes/skills/smart-home/home-hub/
+scp -r home-agent-skill/home-hub/* root@<your-server-ip>:~/.hermes/skills/smart-home/home-hub/
 
 # 重启 Hermes（如果需要重新加载 Skill）
 hermes restart

@@ -250,3 +250,22 @@ class DishPreference(Base):
     __table_args__ = (
         UniqueConstraint("dish_id", "member_id", name="uq_dish_member_preference"),
     )
+
+
+# ============================================================
+# Cloud Drive Models
+# ============================================================
+
+class DriveFile(Base):
+    """Cloud drive file or folder metadata stored in DB."""
+    __tablename__ = "drive_files"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    filename = Column(String(512), nullable=False)
+    oss_key = Column(String(512), nullable=False, unique=True, index=True)
+    file_size = Column(BigInteger, nullable=False, default=0)
+    content_type = Column(String(256), nullable=False, default="")
+    uploaded_by = Column(String(64), nullable=False, default="")
+    is_dir = Column(SmallInteger, nullable=False, default=0, index=True)  # 0=file, 1=directory
+    parent_id = Column(Integer, ForeignKey("drive_files.id", ondelete="CASCADE"), nullable=True, index=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)

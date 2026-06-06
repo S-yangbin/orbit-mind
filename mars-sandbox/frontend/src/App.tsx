@@ -11,6 +11,7 @@ const NodeManagement = lazy(() => import("./components/NodeManagement").then(m =
 const VideoList = lazy(() => import("./components/VideoList").then(m => ({ default: m.VideoList })));
 const VideoPlayer = lazy(() => import("./components/VideoPlayer").then(m => ({ default: m.VideoPlayer })));
 const MealManagement = lazy(() => import("./components/MealManagement").then(m => ({ default: m.MealManagement })));
+const CloudDrive = lazy(() => import("./components/CloudDrive").then(m => ({ default: m.CloudDrive })));
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
@@ -41,6 +42,7 @@ function AppRoutes() {
         <Route path="videos" element={<VideoList />} />
         <Route path="videos/:id" element={<VideoPlayer />} />
         <Route path="meals" element={<MealManagement />} />
+        <Route path="drive" element={<CloudDrive />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

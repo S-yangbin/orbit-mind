@@ -27,7 +27,7 @@ nano config.yaml
 
 # 添加:
 agent:
-  mars_sandbox_url: "ws://8.213.135.161:8888"
+  mars_sandbox_url: "ws://<your-server-ip>:8888"
   node_secret: "test-secret-key-123"
   node_id: "test-node-001"
   heartbeat_interval: 60
@@ -50,10 +50,10 @@ python main.py
 ============================================
 Home Agent 启动 (WebSocket 架构)
 节点 ID: test-node-001
-mars-sandbox: ws://8.213.135.161:8888
+mars-sandbox: ws://<your-server-ip>:8888
 ...
 ============================================
-正在连接 mars-sandbox: ws://8.213.135.161:8888
+正在连接 mars-sandbox: ws://<your-server-ip>:8888
 WebSocket 连接成功
 已发送注册消息
 节点注册成功: test-node-001
@@ -69,7 +69,7 @@ WebSocket 连接成功
 cd /Users/syb/workspace/orbit-mind/home-agent-skill/home-hub/scripts
 
 # 设置环境变量
-export MARS_SANDBOX_URL="http://8.213.135.161:8888"
+export MARS_SANDBOX_URL="http://<your-server-ip>:8888"
 export MARS_SANDBOX_API_KEY="test-secret-key-123"
 
 # 发送测试命令
@@ -99,7 +99,7 @@ python list_nodes.py
 
 # 或直接访问API
 curl -H "X-API-Key: test-secret-key-123" \
-  http://8.213.135.161:8888/api/nodes | jq
+  http://<your-server-ip>:8888/api/nodes | jq
 ```
 
 ## 完整测试流程
@@ -131,7 +131,7 @@ A: 检查:
 
 ```bash
 # mars-sandbox日志
-ssh root@8.213.135.161 'journalctl -u mars-sandbox -f'
+ssh root@<your-server-ip> 'journalctl -u mars-sandbox -f'
 
 # home-agent日志
 journalctl -u home-agent -f
@@ -140,7 +140,7 @@ journalctl -u home-agent -f
 ## 下一步
 
 - 阅读 [DEPLOYMENT.md](DEPLOYMENT.md) 了解完整部署流程
-- 查看 [API文档](http://8.213.135.161:8888/docs)
+- 查看 [API文档](http://<your-server-ip>:8888/docs)
 - 配置Hermes Skill实现IM控制
 - 集成EPD Tool控制电子墨水屏
 

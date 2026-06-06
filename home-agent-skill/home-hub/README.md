@@ -10,14 +10,14 @@ AI 大模型 / 终端用户
        ▼
    mars-cli  ──(HTTP)──▶  mars-sandbox  ──(WebSocket)──▶  home-agent  ──▶  执行 shell 命令
    (CLI 客户端)           (中枢网关服务)                   (节点 agent)
-                         8.213.135.161:8888               家庭 Linux 服务器
+                         <your-server-ip>:8888               家庭 Linux 服务器
 ```
 
 **组件说明：**
 
 | 组件 | 角色 | 部署位置 | 通信协议 |
 |------|------|----------|----------|
-| **mars-sandbox** | 中枢网关，管理节点、转发命令、Web 管理面板 | 云服务器 (8.213.135.161) | HTTP + WebSocket |
+| **mars-sandbox** | 中枢网关，管理节点、转发命令、Web 管理面板 | 云服务器 (<your-server-ip>) | HTTP + WebSocket |
 | **home-agent** | 节点 agent，接收命令并在本机执行 | 家庭 Linux 服务器 | WebSocket 长连接 |
 | **mars-cli** | CLI 客户端，封装 mars-sandbox HTTP API | 开发机 / AI 终端 | HTTP |
 
@@ -37,7 +37,7 @@ AI 大模型 / 终端用户
 
 ```bash
 # SSH 到云服务器
-ssh root@8.213.135.161
+ssh root@<your-server-ip>
 
 # 创建应用目录
 mkdir -p /opt/mars-sandbox
@@ -78,10 +78,10 @@ pnpm install && pnpm run build
 tar -czf ../mars-sandbox-frontend.tar.gz dist/
 
 # 上传到服务器
-scp ../mars-sandbox-backend.tar.gz ../mars-sandbox-frontend.tar.gz root@8.213.135.161:/opt/mars-sandbox/
+scp ../mars-sandbox-backend.tar.gz ../mars-sandbox-frontend.tar.gz root@<your-server-ip>:/opt/mars-sandbox/
 
 # 服务器上：解压并安装
-ssh root@8.213.135.161
+ssh root@<your-server-ip>
 cd /opt/mars-sandbox
 tar -xzf mars-sandbox-backend.tar.gz
 mkdir -p frontend && tar -xzf mars-sandbox-frontend.tar.gz -C frontend/
@@ -159,10 +159,10 @@ systemctl start mars-sandbox
 systemctl status mars-sandbox
 
 # 健康检查
-curl http://8.213.135.161:8888/health
+curl http://<your-server-ip>:8888/health
 
 # 查看 API 文档
-# 浏览器访问: http://8.213.135.161:8888/docs
+# 浏览器访问: http://<your-server-ip>:8888/docs
 ```
 
 ---
@@ -194,7 +194,7 @@ pip install -r requirements.txt
 cat > ~/orbit-mind/config.yaml << 'EOF'
 agent:
   node_id: "home-server-01"           # 节点唯一标识
-  mars_sandbox_url: "ws://8.213.135.161:8888"  # mars-sandbox WebSocket 地址
+  mars_sandbox_url: "ws://<your-server-ip>:8888"  # mars-sandbox WebSocket 地址
   node_secret: "<与 NODE_API_KEY 相同>"         # 认证密钥
   heartbeat_interval: 60              # 心跳间隔（秒）
   reconnect_delay: 5                  # 断线重连延迟（秒）
@@ -244,7 +244,7 @@ systemctl start home-agent
 journalctl -u home-agent -f
 
 # 应看到类似输出：
-# WebSocket 连接成功: ws://8.213.135.161:8888/ws/agent/home-server-01
+# WebSocket 连接成功: ws://<your-server-ip>:8888/ws/agent/home-server-01
 # 心跳发送成功
 ```
 
@@ -284,7 +284,7 @@ mars-cli 支持三种配置方式（优先级从高到低）：
 mkdir -p ~/.config/mars-cli
 cat > ~/.config/mars-cli/config.json << 'EOF'
 {
-    "url": "http://8.213.135.161:8888",
+    "url": "http://<your-server-ip>:8888",
     "api_key": "<你的 NODE_API_KEY>"
 }
 EOF
@@ -299,14 +299,14 @@ EOF
 
 ```bash
 # 添加到 ~/.bashrc 或 ~/.zshrc
-export MARS_SANDBOX_URL="http://8.213.135.161:8888"
+export MARS_SANDBOX_URL="http://<your-server-ip>:8888"
 export MARS_SANDBOX_API_KEY="<你的 NODE_API_KEY>"
 ```
 
 **方式 C — 命令行参数（临时使用）：**
 
 ```bash
-mars-cli --url http://8.213.135.161:8888 --api-key <KEY> nodes
+mars-cli --url http://<your-server-ip>:8888 --api-key <KEY> nodes
 ```
 
 ### 3.3 验证
@@ -347,13 +347,13 @@ mars-cli exec home-server-01 'echo "Hello from home-agent!"'
 | 节点显示 offline | 检查 home-agent 是否运行：`journalctl -u home-agent -f` |
 | 命令执行超时 | 增大 `-t` 参数；检查节点网络；查看 home-agent 日志 |
 | 命令被安全策略拦截 | 检查 home-agent config.yaml 的 blocked_commands |
-| mars-sandbox 不可达 | `ssh root@8.213.135.161 'systemctl status mars-sandbox'` |
+| mars-sandbox 不可达 | `ssh root@<your-server-ip> 'systemctl status mars-sandbox'` |
 
 **日志查看：**
 
 ```bash
 # mars-sandbox 日志
-ssh root@8.213.135.161 'journalctl -u mars-sandbox -f'
+ssh root@<your-server-ip> 'journalctl -u mars-sandbox -f'
 
 # home-agent 日志（在节点服务器上）
 journalctl -u home-agent -f

@@ -11,6 +11,10 @@ beautifulsoup4==4.12.3
 apscheduler==3.10.4
 Pillow>=10.0.0
 
+# Alibaba Cloud STS SDK (for cloud drive STS token)
+alibabacloud-sts20150401>=1.0.0
+alibabacloud-tea-openapi>=0.3.0
+
 # WebSocket support
 websockets>=12.0
 

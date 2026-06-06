@@ -16,7 +16,7 @@ home-agent (WebSocket客户端) → mars-sandbox (WebSocket服务端) ← Hermes
 
 ```bash
 # SSH到服务器
-ssh root@8.213.135.161
+ssh root@<your-server-ip>
 
 # 创建目录
 mkdir -p /opt/mars-sandbox
@@ -46,10 +46,10 @@ chmod +x deploy.sh
 # 从本地上传代码
 cd /Users/syb/workspace/orbit-mind/mars-sandbox/backend
 tar -czf ../mars-sandbox.tar.gz app/ requirements.txt
-scp mars-sandbox.tar.gz root@8.213.135.161:/opt/mars-sandbox/
+scp mars-sandbox.tar.gz root@<your-server-ip>:/opt/mars-sandbox/
 
 # 在服务器上解压
-ssh root@8.213.135.161
+ssh root@<your-server-ip>
 cd /opt/mars-sandbox
 tar -xzf mars-sandbox.tar.gz
 source venv/bin/activate
@@ -80,10 +80,10 @@ DB_NAME=mars_sandbox
 
 ```bash
 # 上传service文件
-scp mars-sandbox.service root@8.213.135.161:/etc/systemd/system/
+scp mars-sandbox.service root@<your-server-ip>:/etc/systemd/system/
 
 # 在服务器上
-ssh root@8.213.135.161
+ssh root@<your-server-ip>
 systemctl daemon-reload
 systemctl enable mars-sandbox
 systemctl start mars-sandbox
@@ -94,16 +94,16 @@ systemctl status mars-sandbox
 
 ```bash
 # 检查服务状态
-ssh root@8.213.135.161 'systemctl status mars-sandbox'
+ssh root@<your-server-ip> 'systemctl status mars-sandbox'
 
 # 查看日志
-ssh root@8.213.135.161 'journalctl -u mars-sandbox -f'
+ssh root@<your-server-ip> 'journalctl -u mars-sandbox -f'
 
 # 测试健康检查
-curl http://8.213.135.161:8888/health
+curl http://<your-server-ip>:8888/health
 
 # 查看API文档
-open http://8.213.135.161:8888/docs
+open http://<your-server-ip>:8888/docs
 ```
 
 ### 6. 运行测试
@@ -129,7 +129,7 @@ nano ~/orbit-mind/config.yaml
 
 # 添加WebSocket配置
 agent:
-  mars_sandbox_url: "ws://8.213.135.161:8888"
+  mars_sandbox_url: "ws://<your-server-ip>:8888"
   node_secret: "your-secret-key-here"  # 与NODE_API_KEY相同
   heartbeat_interval: 60
   node_id: "home-server-01"
@@ -145,7 +145,7 @@ python main.py
 
 ```bash
 # 设置环境变量
-export MARS_SANDBOX_URL="http://8.213.135.161:8888"
+export MARS_SANDBOX_URL="http://<your-server-ip>:8888"
 export MARS_SANDBOX_API_KEY="your-secret-key-here"
 
 # 发送命令
@@ -159,10 +159,10 @@ python scripts/send_command.py "home-server-01" "ls -la" --timeout 30
 
 ```bash
 # 检查mars-sandbox日志
-ssh root@8.213.135.161 'journalctl -u mars-sandbox -n 100'
+ssh root@<your-server-ip> 'journalctl -u mars-sandbox -n 100'
 
 # 检查网络连通性
-telnet 8.213.135.161 8888
+telnet <your-server-ip> 8888
 
 # 检查NODE_API_KEY是否一致
 # mars-sandbox: .env中的NODE_API_KEY
@@ -173,7 +173,7 @@ telnet 8.213.135.161 8888
 
 ```bash
 # 检查节点是否在线
-curl -H "X-API-Key: your-key" http://8.213.135.161:8888/api/nodes
+curl -H "X-API-Key: your-key" http://<your-server-ip>:8888/api/nodes
 
 # 检查home-agent日志
 journalctl -u home-agent -f
@@ -192,7 +192,7 @@ python scripts/send_command.py "node-id" "command" --timeout 60
 # mars-sandbox连接池默认180秒无心跳标记离线
 
 # 查看连接状态
-ssh root@8.213.135.161 'journalctl -u mars-sandbox | grep "节点.*注册"'
+ssh root@<your-server-ip> 'journalctl -u mars-sandbox | grep "节点.*注册"'
 ```
 
 ## 性能优化
@@ -228,7 +228,7 @@ server {
 
 ## API端点
 
-- **WebSocket**: `ws://8.213.135.161:8888/ws/agent/{node_id}?secret={key}`
+- **WebSocket**: `ws://<your-server-ip>:8888/ws/agent/{node_id}?secret={key}`
 - **命令执行**: `POST /api/commands`
 - **节点列表**: `GET /api/nodes`
 - **心跳上报**: `PUT /api/nodes/heartbeat`
@@ -242,7 +242,7 @@ server {
 ./deploy.sh
 
 # 或手动更新
-ssh root@8.213.135.161
+ssh root@<your-server-ip>
 cd /opt/mars-sandbox
 systemctl stop mars-sandbox
 tar -xzf mars-sandbox.tar.gz

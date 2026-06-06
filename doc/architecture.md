@@ -32,7 +32,7 @@
                ▼                                     ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │                  mars-sandbox (WebSocket + HTTP API)                  │
-│                     ws://8.213.135.161:8888                          │
+│                     ws://<your-server-ip>:8888                          │
 │                                                                      │
 │   功能模块：                                                           │
 │   ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐          │
@@ -72,7 +72,7 @@
 
 | 属性 | 值 |
 |------|-----|
-| 部署位置 | 阿里云 ECS (`8.213.135.161`) |
+| 部署位置 | 阿里云 ECS (`<your-server-ip>`) |
 | 运行方式 | Hermes Agent 守护进程 |
 | 交互方式 | 钉钉/微信 Gateway |
 | Skill 路径 | `~/.hermes/skills/smart-home/home-hub/` |
@@ -113,8 +113,8 @@ Home Agent 是长驻守护进程，通过 WebSocket 连接 mars-sandbox，接收
 | 属性 | 值 |
 |------|-----|
 | 服务 | mars-sandbox (FastAPI + websockets + MySQL) |
-| 地址 | `ws://8.213.135.161:8888` (WebSocket) |
-| HTTP API | `http://8.213.135.161:8888/api/*` |
+| 地址 | `ws://<your-server-ip>:8888` (WebSocket) |
+| HTTP API | `http://<your-server-ip>:8888/api/*` |
 | 功能 | WebSocket 服务端 + 节点管理 + 命令转发 |
 | SDK | websockets >= 12.0, FastAPI, SQLAlchemy |
 
