@@ -54,14 +54,6 @@ function formatWeekendDate(dateStr: string): string {
   return `${month}/${day} ${weekday}`;
 }
 
-function formatTime(date: Date): string {
-  return date.toLocaleTimeString("zh-CN", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-}
-
 /** 获取本地日期字符串 YYYY-MM-DD（避免 toISOString 的 UTC 时区偏移） */
 function getLocalDateStr(d: Date): string {
   const y = d.getFullYear();
@@ -70,13 +62,22 @@ function getLocalDateStr(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
-function formatFullDate(date: Date): string {
-  return date.toLocaleDateString("zh-CN", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    weekday: "long",
-  });
+/** 内置箴言（hitokoto API 不可用时的 fallback） */
+const BUILT_IN_QUOTES = [
+  "生活不是等待暴风雨过去，而是学会在雨中跳舞。",
+  "每一个不曾起舞的日子，都是对生命的辜负。",
+  "把每一天当作最后一天来过，终将活出非凡。",
+  "温柔半两，从容一生。",
+  "星光不问赶路人，时光不负有心人。",
+  "人间值得，未来可期。",
+  "所有的好事，都在慢慢发生。",
+];
+
+/** 根据日期哈希从数组中选取箴言（同一天返回相同） */
+function pickBuiltinQuote(): string {
+  const d = new Date();
+  const dayIndex = d.getFullYear() * 1000 + d.getMonth() * 31 + d.getDate();
+  return BUILT_IN_QUOTES[dayIndex % BUILT_IN_QUOTES.length];
 }
 
 function weatherIconUrl(icon: string, size: "2x" | "4x" = "2x"): string {
@@ -104,11 +105,31 @@ export function Dashboard() {
   const { data, isConnected, familyMembers, acknowledgeMessage } = useDashboardWs();
   const [now, setNow] = useState(new Date());
   const [selectedTravelPage, setSelectedTravelPage] = useState<DashboardTravelPage | null>(null);
+  const [dailyQuote, setDailyQuote] = useState<string>(pickBuiltinQuote());
 
-  // 每秒更新时间显示
+  // 每分钟刷新（用于夜间模式判断）
   useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 1000);
+    const timer = setInterval(() => setNow(new Date()), 60_000);
     return () => clearInterval(timer);
+  }, []);
+
+  // 获取每日箴言（hitokoto API + 内置 fallback）
+  useEffect(() => {
+    let cancelled = false;
+    fetch("https://v1.hitokoto.cn/?c=a&c=b&c=d&c=i&c=k",
+      { headers: { "User-Agent": "OrbitMind/1.0" } }
+    )
+      .then((r) => r.json())
+      .then((j) => {
+        if (cancelled) return;
+        const text = j?.hitokoto;
+        const from = j?.from;
+        if (text) {
+          setDailyQuote(from ? `${text} —— ${from}` : text);
+        }
+      })
+      .catch(() => { /* 使用内置 fallback */ });
+    return () => { cancelled = true; };
   }, []);
 
   // 夜间模式判断（18:00后或6:00前）
@@ -263,26 +284,20 @@ export function Dashboard() {
           borderBottom: "1px solid rgba(255,255,255,0.15)",
           flexShrink: 0,
         }}>
-          {/* 左侧：日期时间 */}
-          <div>
+          {/* 左侧：每日箴言 */}
+          <div style={{
+            maxWidth: "60%",
+          }}>
             <div style={{
-              fontSize: 28,
-              fontWeight: 600,
-              color: "#fff",
+              fontSize: 22,
+              fontWeight: 500,
+              color: "rgba(255,255,255,0.95)",
               textShadow: "0 2px 8px rgba(0,0,0,0.3)",
-              marginBottom: 4,
+              lineHeight: 1.5,
+              letterSpacing: "0.5px",
+              fontStyle: "italic",
             }}>
-              {formatFullDate(now)}
-            </div>
-            <div style={{
-              fontSize: 48,
-              fontWeight: 300,
-              color: "rgba(255,255,255,0.9)",
-              textShadow: "0 2px 8px rgba(0,0,0,0.3)",
-              lineHeight: 1,
-              letterSpacing: "-1px",
-            }}>
-              {formatTime(now)}
+              「{dailyQuote}」
             </div>
           </div>
 
