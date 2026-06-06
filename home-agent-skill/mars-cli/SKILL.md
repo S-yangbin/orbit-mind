@@ -13,7 +13,7 @@ metadata:
   category: smart-home
 required_environment_variables:
   - name: MARS_SANDBOX_URL
-    prompt: mars-sandbox 服务地址（如 http://localhost:8888）
+    prompt: mars-sandbox 服务地址（如 http://<your-server-ip>:8888）
     help: mars-sandbox 服务的 HTTP API 地址
     required_for: 所有 mars-cli 命令
   - name: MARS_SANDBOX_API_KEY
