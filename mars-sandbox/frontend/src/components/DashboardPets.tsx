@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import dogImg from "../assets/dog.png";
+import catImg from "../assets/cat.png";
 
 /* ───────── 类型 ───────── */
 type PetKind = "dog" | "cat";
@@ -35,9 +37,9 @@ const MAX_CLICKS_DOG = 7;
 const MAX_CLICKS_CAT = 5; // 猫更不耐烦
 const CLICK_DECAY_INTERVAL = 8000; // 8秒减1次点击计数
 const GONE_DURATION = 120_000;
-const WALK_SPEED = 0.3;
-const RUN_SPEED = 0.85;
-const FLEE_SPEED = 2.8;
+const WALK_SPEED = 0.12;
+const RUN_SPEED = 0.35;
+const FLEE_SPEED = 1.8;
 
 const EMOJI: Record<PetKind, Record<string, string>> = {
   dog: { idle: "🐶", walk: "🐕", run: "🐕‍🦺", sleep: "🐶" },
@@ -67,6 +69,30 @@ const SPEECHES: Record<PetKind, Record<string, string[]>> = {
   },
 };
 
+/* ───────── 叫声播放 ───────── */
+function playSound(kind: PetKind, type: "happy" | "annoyed" | "flee" | "mumble") {
+  try {
+    const utter = new SpeechSynthesisUtterance();
+    utter.lang = "zh-CN";
+    utter.rate = 1.2;
+    utter.pitch = kind === "dog" ? 1.1 : 1.4;
+    if (kind === "dog") {
+      if (type === "happy") utter.text = "汪汪";
+      else if (type === "annoyed") utter.text = "呜汪";
+      else if (type === "mumble") utter.text = "汪";
+      else utter.text = "汪汪汪";
+    } else {
+      if (type === "happy") utter.text = "喵呜";
+      else if (type === "annoyed") utter.text = "喵";
+      else if (type === "mumble") utter.text = "喵";
+      else utter.text = "喵呜喵呜";
+    }
+    window.speechSynthesis.speak(utter);
+  } catch {
+    // 忽略语音播放错误
+  }
+}
+
 /* ───────── 工具函数 ───────── */
 function pick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
@@ -82,11 +108,24 @@ function clamp(v: number, lo: number, hi: number) {
 
 let trailKeyCounter = 0;
 
+/* ───────── 球的状态 ───────── */
+interface BallState {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  active: boolean;
+}
+
+const BALL_SIZE = 16;
+const BALL_SPEED = 0.6;
+const BALL_FRICTION = 0.98;
+const PET_CHASE_BALL_DISTANCE = 15; // 宠物开始追球的距离
+
 /* ───────── 单个宠物渲染 ───────── */
 function PetView({ state, onClick }: { state: PetState; onClick: () => void }) {
-  const size = state.kind === "dog" ? 50 : 44;
+  const size = state.kind === "dog" ? 80 : 72;
   const actionKey = state.action === "flee" ? "run" : state.action === "enter" ? "walk" : state.action;
-  const emoji = EMOJI[state.kind][actionKey] || EMOJI[state.kind].idle;
   const animClass = getAnimClass(state.action);
 
   return (
@@ -149,17 +188,27 @@ function PetView({ state, onClick }: { state: PetState; onClick: () => void }) {
           }}
         />
 
-        {/* 主体 emoji */}
+        {/* 主体图片 */}
         <div
           style={{
-            fontSize: size,
+            width: size,
+            height: size,
             lineHeight: 1,
             filter: "drop-shadow(0 4px 8px rgba(0,0,0,0.25))",
             animation: animClass,
             position: "relative",
           }}
         >
-          {emoji}
+          <img
+            src={state.kind === "dog" ? dogImg : catImg}
+            alt={state.kind === "dog" ? "旺财" : "咪咪"}
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "contain",
+              display: "block",
+            }}
+          />
 
           {/* 睡觉的 Zzz */}
           {state.action === "sleep" && (
@@ -230,9 +279,14 @@ function PetView({ state, onClick }: { state: PetState; onClick: () => void }) {
               boxShadow: "0 2px 14px rgba(0,0,0,0.15)",
               animation: "petFadeInUp 0.3s ease",
               pointerEvents: "none",
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
             }}
           >
-            {state.speechBubble}
+            <span>{state.kind === "dog" ? "🐶" : "🐱"}</span>
+            <span>{state.speechBubble}</span>
+            <span>{state.kind === "dog" ? "汪汪" : "喵呜"}</span>
             <div
               style={{
                 position: "absolute",
@@ -320,6 +374,17 @@ export function DashboardPets() {
   const dogTarget = useRef<{ x: number; y: number } | null>(null);
   const catTarget = useRef<{ x: number; y: number } | null>(null);
 
+  /* ── 球状态 ── */
+  const [ball, setBall] = useState<BallState>({
+    x: 50,
+    y: 75,
+    vx: 0,
+    vy: 0,
+    active: false,
+  });
+  const ballRef = useRef(ball);
+  ballRef.current = ball;
+
   /* ── 点击计数衰减 ── */
   useEffect(() => {
     const timer = setInterval(() => {
@@ -344,6 +409,22 @@ export function DashboardPets() {
     return () => clearTimeout(timeout);
   }, []);
 
+  /* ── 自言自语（随机间隔） ── */
+  useEffect(() => {
+    const MUMBLE_INTERVAL = 15000; // 15秒基础间隔
+    let timeout: ReturnType<typeof setTimeout>;
+    const schedule = () => {
+      const delay = MUMBLE_INTERVAL + Math.random() * 10000;
+      timeout = setTimeout(() => {
+        mumbleRandom("dog");
+        mumbleRandom("cat");
+        schedule();
+      }, delay);
+    };
+    schedule();
+    return () => clearTimeout(timeout);
+  }, []);
+
   /* ── 移动帧 ── */
   useEffect(() => {
     let raf: number;
@@ -352,6 +433,7 @@ export function DashboardPets() {
       frameCount++;
       moveStep("dog", frameCount);
       moveStep("cat", frameCount);
+      updateBall();
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -404,6 +486,35 @@ export function DashboardPets() {
     return () => timers.forEach(clearTimeout);
   }, [dog.gone, cat.gone]);
 
+  /* ── 自言自语 ── */
+  const mumbleRandom = useCallback(
+    (kind: PetKind) => {
+      const setter = kind === "dog" ? setDog : setCat;
+      const ref = kind === "dog" ? dogRef : catRef;
+      const speeches = SPEECHES[kind];
+
+      if (ref.current.gone) return;
+      if (ref.current.speechVisible) return;
+      if (ref.current.action === "flee") return;
+
+      const r = Math.random();
+      let text = "";
+      if (r < 0.25) {
+        text = pick(speeches.idle);
+      } else if (r < 0.5) {
+        text = pick(speeches.lick);
+      } else if (r < 0.75) {
+        text = pick(speeches.chase_tail);
+      } else {
+        text = pick(speeches.sleep);
+      }
+
+      setter((p) => ({ ...p, speechBubble: text, speechVisible: true }));
+      setTimeout(() => setter((p) => ({ ...p, speechVisible: false })), 3000);
+    },
+    [],
+  );
+
   /* ── 行为逻辑 ── */
   const updateBehavior = useCallback(
     (kind: PetKind) => {
@@ -417,6 +528,24 @@ export function DashboardPets() {
       if (ref.current.action === "flee") return;
 
       const r = Math.random();
+
+      // 如果球在活跃状态且宠物离球近，追球
+      if (ballRef.current.active) {
+        const b = ballRef.current;
+        const pet = ref.current;
+        const dxb = b.x - pet.x;
+        const dyb = b.y - pet.y;
+        const distBall = Math.sqrt(dxb * dxb + dyb * dyb);
+        if (distBall < PET_CHASE_BALL_DISTANCE) {
+          // 接近球时踢/拍一下
+          if (distBall < 4) {
+            kickBall(kind);
+          }
+          target.current = { x: b.x, y: b.y };
+          setter((p) => ({ ...p, action: "run", flipX: (target.current?.x ?? p.x) < p.x }));
+          return;
+        }
+      }
 
       // 狗有时会跟着猫
       if (kind === "dog" && r < 0.15 && !catRef.current.gone) {
@@ -455,6 +584,55 @@ export function DashboardPets() {
     },
     [],
   );
+
+  /* ── 球物理更新 ── */
+  const updateBall = useCallback(() => {
+    setBall((prev) => {
+      if (!prev.active) return prev;
+      let newX = prev.x + prev.vx;
+      let newY = prev.y + prev.vy;
+      let newVx = prev.vx * BALL_FRICTION;
+      let newVy = prev.vy * BALL_FRICTION;
+      // 边界反弹
+      if (newX < 2 || newX > 96) {
+        newVx = -newVx * 0.7;
+        newX = clamp(newX, 2, 96);
+      }
+      if (newY < 55 || newY > 92) {
+        newVy = -newVy * 0.7;
+        newY = clamp(newY, 55, 92);
+      }
+      // 速度过小时停止
+      if (Math.abs(newVx) < 0.01 && Math.abs(newVy) < 0.01) {
+        return { ...prev, vx: 0, vy: 0 };
+      }
+      return { ...prev, x: newX, y: newY, vx: newVx, vy: newVy };
+    });
+  }, []);
+
+  /* ── 踢/拍球 ── */
+  const kickBall = useCallback((kind: PetKind) => {
+    const petRef = kind === "dog" ? dogRef : catRef;
+    if (!petRef.current || petRef.current.gone) return;
+    
+    setBall((prev) => {
+      if (!prev.active) return prev;
+      const dx = prev.x - petRef.current.x;
+      const dy = prev.y - petRef.current.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 5) {
+        // 踢/拍球
+        const angle = Math.atan2(dy, dx);
+        const force = 0.8 + Math.random() * 0.5;
+        return {
+          ...prev,
+          vx: Math.cos(angle) * force * 1.5,
+          vy: Math.sin(angle) * force * 1.5,
+        };
+      }
+      return prev;
+    });
+  }, []);
 
   /* ── 每帧移动 ── */
   const moveStep = useCallback(
@@ -539,6 +717,7 @@ export function DashboardPets() {
         }));
         const fleeX = Math.random() > 0.5 ? 108 : -12;
         target.current = { x: fleeX, y: ref.current.y };
+        playSound(kind, "flee");
         setTimeout(() => {
           setter((p) => ({ ...p, gone: true, speechVisible: false, sweatVisible: false }));
         }, 1600);
@@ -557,6 +736,7 @@ export function DashboardPets() {
           heartVisible: false,
           heartKey: p.heartKey + 1,
         }));
+        playSound(kind, "annoyed");
         setTimeout(() => setter((p) => ({ ...p, speechVisible: false, sweatVisible: false })), 1800);
       } else {
         target.current = null;
@@ -569,6 +749,7 @@ export function DashboardPets() {
           speechBubble: pick(speeches.clicked),
           speechVisible: true,
         }));
+        playSound(kind, "happy");
         setTimeout(() => setter((p) => ({ ...p, heartVisible: false })), 1000);
         setTimeout(() => setter((p) => ({ ...p, speechVisible: false })), 2000);
       }
@@ -576,9 +757,61 @@ export function DashboardPets() {
     [],
   );
 
+  /* ── 点击球 ── */
+  const handleBallClick = useCallback(() => {
+    setBall((prev) => {
+      if (prev.active) {
+        // 踢球
+        const angle = Math.random() * Math.PI * 2;
+        const force = 0.8 + Math.random() * 0.6;
+        return {
+          ...prev,
+          vx: Math.cos(angle) * force * 2,
+          vy: Math.sin(angle) * force * 2,
+        };
+      }
+      // 激活球
+      return { ...prev, active: true, x: 50, y: 75, vx: 0, vy: 0 };
+    });
+  }, []);
+
   return (
     <>
       <style>{petKeyframes}</style>
+      {/* 球 */}
+      <div
+        onClick={handleBallClick}
+        style={{
+          position: "fixed",
+          left: `${ball.x}%`,
+          top: `${ball.y}%`,
+          width: BALL_SIZE,
+          height: BALL_SIZE,
+          borderRadius: "50%",
+          background: "radial-gradient(circle at 30% 30%, #ff6b6b, #c92a2a)",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
+          zIndex: 101,
+          cursor: "pointer",
+          transition: ball.active ? "none" : "left 0.3s ease, top 0.3s ease",
+          opacity: ball.active ? 1 : 0.6,
+          pointerEvents: "auto",
+        }}
+        title={ball.active ? "点击踢球!" : "点击开始玩球"}
+      >
+        {ball.active && (
+          <div
+            style={{
+              position: "absolute",
+              top: "20%",
+              left: "25%",
+              width: "35%",
+              height: "35%",
+              borderRadius: "50%",
+              background: "rgba(255,255,255,0.35)",
+            }}
+          />
+        )}
+      </div>
       <PetView state={dog} onClick={() => handleClick("dog")} />
       <PetView state={cat} onClick={() => handleClick("cat")} />
     </>
