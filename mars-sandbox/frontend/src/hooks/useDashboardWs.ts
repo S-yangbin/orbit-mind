@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import type { DashboardData, DashboardWsMessage, BoardMessage } from "../types";
+import type { DashboardData, DashboardWsMessage, BoardMessage, DashboardFamilyMember } from "../types";
 
 interface UseDashboardWsReturn {
   data: DashboardData | null;
   isConnected: boolean;
   lastUpdate: string | null;
+  familyMembers: DashboardFamilyMember[];
+  acknowledgeMessage: (messageId: number, memberId: number) => void;
 }
 
 /**
@@ -115,6 +117,23 @@ export function useDashboardWs(): UseDashboardWsReturn {
             }
             break;
 
+          case "message_acknowledged":
+            // 留言被成员确认
+            if (msg.message_id !== undefined && msg.acknowledged_by) {
+              const targetId = msg.message_id;
+              const newAck = msg.acknowledged_by;
+              setData((prev) => {
+                if (!prev) return prev;
+                return {
+                  ...prev,
+                  messages: prev.messages.map((m) =>
+                    m.id === targetId ? { ...m, acknowledged_by: newAck } : m
+                  ),
+                };
+              });
+            }
+            break;
+
           case "pong":
             // 心跳响应，无需处理
             break;
@@ -163,5 +182,19 @@ export function useDashboardWs(): UseDashboardWsReturn {
     };
   }, [connect]);
 
-  return { data, isConnected, lastUpdate };
+  // acknowledgeMessage: 通过 WS 发送留言确认
+  const acknowledgeMessage = useCallback((messageId: number, memberId: number) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: "acknowledge_message",
+        message_id: messageId,
+        member_id: memberId,
+      }));
+    }
+  }, []);
+
+  // 家庭成员列表
+  const familyMembers = data?.family_members ?? [];
+
+  return { data, isConnected, lastUpdate, familyMembers, acknowledgeMessage };
 }

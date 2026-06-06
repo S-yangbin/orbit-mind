@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { Spin, Typography, Tag } from "antd";
+import { Spin, Typography, Tag, Image, Modal } from "antd";
 import {
   WifiOutlined,
   DisconnectOutlined,
@@ -7,13 +7,17 @@ import {
   EnvironmentOutlined,
   MessageOutlined,
   PushpinOutlined,
+  CheckCircleFilled,
 } from "@ant-design/icons";
+import { DashboardPets } from "./DashboardPets";
 import { useDashboardWs } from "../hooks/useDashboardWs";
 import type {
   DashboardMealPlanItem,
   BoardMessage,
   WeatherInfo,
   WeatherForecastItem,
+  DashboardTravelPage,
+  DashboardFamilyMember,
 } from "../types";
 
 const { Title, Text } = Typography;
@@ -78,6 +82,14 @@ function formatTime(date: Date): string {
   });
 }
 
+/** 获取本地日期字符串 YYYY-MM-DD（避免 toISOString 的 UTC 时区偏移） */
+function getLocalDateStr(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 function formatFullDate(date: Date): string {
   return date.toLocaleDateString("zh-CN", {
     year: "numeric",
@@ -107,9 +119,15 @@ const TRAVEL_GRADIENTS = [
   "linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%)",
 ];
 
+/** 菜品照片路径转 URL: /data/meals/xxx -> /meal-photos/xxx */
+function dishPhotoToUrl(path: string): string {
+  return path.replace(/^\/data\/meals\//, "/meal-photos/");
+}
+
 export function Dashboard() {
-  const { data, isConnected } = useDashboardWs();
+  const { data, isConnected, familyMembers, acknowledgeMessage } = useDashboardWs();
   const [now, setNow] = useState(new Date());
+  const [selectedTravelPage, setSelectedTravelPage] = useState<DashboardTravelPage | null>(null);
 
   // 每秒更新时间显示
   useEffect(() => {
@@ -136,17 +154,38 @@ export function Dashboard() {
     );
   }, [data?.meal_plans]);
 
-  // 获取所有周末日期（周六、周日），按周分组
+  // 获取所有周末日期（周六、周日），按周分组 —— 仅保留上周和这周
   const weekendWeeks = useMemo(() => {
     const dates = Object.keys(mealByDate);
     if (dates.length === 0) return [];
 
-    const todayStr = new Date().toISOString().split("T")[0];
+    const today = new Date();
+    const todayStr = getLocalDateStr(today);
+
+    // 本周一（使用本地时间，避免 UTC 偏移）
+    const dayOfWeekLocal = today.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+    const thisMonday = new Date(today);
+    thisMonday.setDate(today.getDate() - (dayOfWeekLocal === 0 ? 6 : dayOfWeekLocal - 1));
+
+    // 上周一
+    const lastMonday = new Date(thisMonday);
+    lastMonday.setDate(thisMonday.getDate() - 7);
+
+    // 下周一（不包含）
+    const nextMonday = new Date(thisMonday);
+    nextMonday.setDate(thisMonday.getDate() + 7);
+
+    const lastMondayStr = getLocalDateStr(lastMonday);
+    const nextMondayStr = getLocalDateStr(nextMonday);
+
     // 按周分组
     const weeks: { weekLabel: string; days: { dateStr: string; isToday: boolean; isPast: boolean }[] }[] = [];
     let currentWeek: typeof weeks[0] | null = null;
 
     for (const dateStr of dates) {
+      // 只保留 >= 上周一 且 < 下周一 的日期
+      if (dateStr < lastMondayStr || dateStr >= nextMondayStr) continue;
+
       const d = new Date(dateStr);
       const dayOfWeek = d.getDay(); // 0=Sun, 6=Sat
       if (dayOfWeek !== 0 && dayOfWeek !== 6) continue;
@@ -228,23 +267,25 @@ export function Dashboard() {
         transition: "background 1s ease",
       }} />
 
+      {/* 宠物猫狗 */}
+      <DashboardPets />
+
       {/* 内容层 */}
       <div style={{
         position: "relative",
         zIndex: 2,
-        padding: "20px 32px",
-        minHeight: "100vh",
+        height: "100vh",
         display: "flex",
         flexDirection: "column",
       }}>
-        {/* Header */}
+        {/* Header - 固定不动 */}
         <div style={{
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          marginBottom: 20,
-          paddingBottom: 16,
+          padding: "20px 32px 16px",
           borderBottom: "1px solid rgba(255,255,255,0.15)",
+          flexShrink: 0,
         }}>
           {/* 左侧：日期时间 */}
           <div>
@@ -379,17 +420,20 @@ export function Dashboard() {
           </div>
         </div>
 
-        {/* 三栏布局 */}
+        {/* 可滚动内容区 */}
+        <div style={{
+          flex: 1,
+          overflow: "auto",
+          padding: "20px 32px 20px",
+        }}>
+        {/* 两栏布局 */}
         <div style={{
           display: "grid",
-          gridTemplateColumns: "1fr 1fr 1fr",
+          gridTemplateColumns: "1fr 1fr",
           gap: 20,
-          flex: 1,
-          overflow: "hidden",
         }}>
           {/* 左栏 - 食谱安排（周末卡片） */}
           <div style={{
-            overflow: "auto",
             borderRadius: 16,
             padding: "16px 20px",
           }}>
@@ -434,8 +478,8 @@ export function Dashboard() {
                             border: day.isToday
                               ? "2px solid rgba(124,58,237,0.4)"
                               : "1px solid rgba(0,0,0,0.06)",
-                            opacity: day.isPast ? 0.5 : 1,
-                            filter: day.isPast ? "grayscale(0.3)" : "none",
+                            opacity: day.isPast ? 0.82 : 1,
+                            filter: day.isPast ? "grayscale(0.12)" : "none",
                             transition: "all 0.3s ease",
                           }}
                         >
@@ -473,23 +517,45 @@ export function Dashboard() {
                                 }}>
                                   {config.label}
                                 </div>
-                                <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                                  {mealItems.map((item) => (
-                                    <Tag
-                                      key={item.id}
-                                      style={{
-                                        margin: 0,
-                                        borderRadius: 8,
-                                        fontSize: 13,
-                                        background: `${config.color}15`,
-                                        color: config.color,
-                                        border: `1px solid ${config.color}30`,
-                                      }}
-                                    >
-                                      {item.dish.name}
-                                    </Tag>
-                                  ))}
-                                </div>
+                                <Image.PreviewGroup>
+                                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+                                    {mealItems.map((item) => {
+                                      const photo = item.dish.photo;
+                                      return (
+                                        <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                          {photo ? (
+                                            <Image
+                                              src={dishPhotoToUrl(photo)}
+                                              alt={item.dish.name}
+                                              width={28}
+                                              height={28}
+                                              style={{
+                                                borderRadius: 6,
+                                                objectFit: "cover",
+                                                cursor: "pointer",
+                                                border: "1px solid #e5e7eb",
+                                              }}
+                                              preview={{ src: dishPhotoToUrl(photo) }}
+                                              fallback="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjgiIGhlaWdodD0iMjgiIHZpZXdCb3g9IjAgMCAyOCAyOCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjgiIGhlaWdodD0iMjgiIHJ4PSI2IiBmaWxsPSIjZjFmNWY5Ii8+PC9zdmc+"
+                                            />
+                                          ) : null}
+                                          <Tag
+                                            style={{
+                                              margin: 0,
+                                              borderRadius: 8,
+                                              fontSize: 13,
+                                              background: `${config.color}15`,
+                                              color: config.color,
+                                              border: `1px solid ${config.color}30`,
+                                            }}
+                                          >
+                                            {item.dish.name}
+                                          </Tag>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </Image.PreviewGroup>
                               </div>
                             );
                           })}
@@ -502,12 +568,17 @@ export function Dashboard() {
             )}
           </div>
 
-          {/* 中栏 - 旅游计划（瀑布流照片墙） */}
+          {/* 右栏 - 旅游计划 + 留言板 上下排列 */}
           <div style={{
-            overflow: "auto",
-            borderRadius: 16,
-            padding: "16px 20px",
+            display: "flex",
+            flexDirection: "column",
+            gap: 20,
           }}>
+            {/* 旅游计划 */}
+            <div style={{
+              borderRadius: 16,
+              padding: "16px 20px",
+            }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
               <EnvironmentOutlined style={{ fontSize: 22, color: "#22d3ee" }} />
               <Text strong style={{ fontSize: 20, color: "#fff", textShadow: "0 1px 4px rgba(0,0,0,0.3)" }}>旅游计划</Text>
@@ -518,10 +589,7 @@ export function Dashboard() {
                 暂无旅游计划
               </div>
             ) : (
-              <div style={{
-                columns: 2,
-                columnGap: 12,
-              }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {data.travel_pages.map((page, idx) => {
                   const hasImage = !!page.thumbnail;
                   const gradient = TRAVEL_GRADIENTS[page.id % TRAVEL_GRADIENTS.length];
@@ -530,17 +598,19 @@ export function Dashboard() {
                     <div
                       key={page.id}
                       style={{
-                        breakInside: "avoid",
-                        marginBottom: 12,
+                        display: "flex",
+                        gap: 12,
                         borderRadius: 16,
                         overflow: "hidden",
-                        background: hasImage ? "#fff" : gradient,
+                        background: "#fff",
                         boxShadow: "0 2px 12px rgba(0,0,0,0.08)",
                         transition: "transform 0.2s ease, box-shadow 0.2s ease",
                         cursor: "pointer",
+                        padding: 0,
                       }}
+                      onClick={() => setSelectedTravelPage(page)}
                       onMouseEnter={(e) => {
-                        e.currentTarget.style.transform = "scale(1.03)";
+                        e.currentTarget.style.transform = "scale(1.02)";
                         e.currentTarget.style.boxShadow = "0 8px 24px rgba(0,0,0,0.15)";
                       }}
                       onMouseLeave={(e) => {
@@ -548,76 +618,60 @@ export function Dashboard() {
                         e.currentTarget.style.boxShadow = "0 2px 12px rgba(0,0,0,0.08)";
                       }}
                     >
+                      {/* 左侧缩略图 */}
                       {hasImage ? (
-                        <>
-                          <img
-                            src={page.thumbnail!}
-                            alt={page.title}
-                            style={{
-                              width: "100%",
-                              display: "block",
-                              // 交替高度制造错落感
-                              height: idx % 3 === 0 ? 180 : idx % 3 === 1 ? 140 : 160,
-                              objectFit: "cover",
-                            }}
-                          />
-                          <div style={{ padding: "10px 12px" }}>
-                            <div style={{
-                              fontSize: 14,
-                              fontWeight: 600,
-                              color: "#1e293b",
-                              lineHeight: 1.3,
-                            }}>
-                              {page.title}
-                            </div>
-                            {page.description && (
-                              <div style={{
-                                fontSize: 12,
-                                color: "#64748b",
-                                marginTop: 4,
-                                lineHeight: 1.4,
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                display: "-webkit-box",
-                                WebkitLineClamp: 2,
-                                WebkitBoxOrient: "vertical",
-                              }}>
-                                {page.description}
-                              </div>
-                            )}
-                          </div>
-                        </>
+                        <img
+                          src={page.thumbnail!}
+                          alt={page.title}
+                          style={{
+                            width: 120,
+                            height: 80,
+                            objectFit: "cover",
+                            flexShrink: 0,
+                          }}
+                        />
                       ) : (
                         <div style={{
-                          padding: "20px 16px",
-                          minHeight: idx % 2 === 0 ? 140 : 120,
+                          width: 120,
+                          height: 80,
+                          flexShrink: 0,
+                          background: gradient,
                           display: "flex",
-                          flexDirection: "column",
+                          alignItems: "center",
                           justifyContent: "center",
                         }}>
-                          <div style={{
-                            fontSize: 16,
-                            fontWeight: 600,
-                            color: "#fff",
-                            textShadow: "0 1px 4px rgba(0,0,0,0.2)",
-                            lineHeight: 1.3,
-                          }}>
-                            {page.title}
-                          </div>
-                          {page.description && (
-                            <div style={{
-                              fontSize: 13,
-                              color: "rgba(255,255,255,0.85)",
-                              marginTop: 6,
-                              lineHeight: 1.4,
-                            }}>
-                              {page.description.length > 60
-                                ? page.description.substring(0, 60) + "..."
-                                : page.description}
-                            </div>
-                          )}
+                          <EnvironmentOutlined style={{ fontSize: 28, color: "rgba(255,255,255,0.8)" }} />
                         </div>
                       )}
+                      {/* 右侧标题+描述 */}
+                      <div style={{ flex: 1, padding: "10px 12px 10px 0", minWidth: 0 }}>
+                        <div style={{
+                          fontSize: 15,
+                          fontWeight: 600,
+                          color: "#1e293b",
+                          lineHeight: 1.3,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}>
+                          {page.title}
+                        </div>
+                        {page.description && (
+                          <div style={{
+                            fontSize: 12,
+                            color: "#64748b",
+                            marginTop: 4,
+                            lineHeight: 1.4,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            display: "-webkit-box",
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: "vertical",
+                          }}>
+                            {page.description}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
@@ -625,12 +679,11 @@ export function Dashboard() {
             )}
           </div>
 
-          {/* 右栏 - 留言板（家庭卡片） */}
-          <div style={{
-            overflow: "auto",
-            borderRadius: 16,
-            padding: "16px 20px",
-          }}>
+            {/* 留言板 */}
+            <div style={{
+              borderRadius: 16,
+              padding: "16px 20px",
+            }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
               <MessageOutlined style={{ fontSize: 22, color: "#fb923c" }} />
               <Text strong style={{ fontSize: 20, color: "#fff", textShadow: "0 1px 4px rgba(0,0,0,0.3)" }}>家庭留言</Text>
@@ -722,6 +775,7 @@ export function Dashboard() {
                       fontSize: 12,
                       color: "#94a3b8",
                       paddingLeft: isPinned ? 50 : 46,
+                      marginBottom: 8,
                     }}>
                       {formatBoardDateTime(msg.created_at)}
                       {msg.expires_at && (
@@ -730,12 +784,87 @@ export function Dashboard() {
                         </span>
                       )}
                     </div>
+
+                    {/* 家庭成员已读按钮 */}
+                    {familyMembers.length > 0 && (
+                      <div style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: 6,
+                        paddingLeft: isPinned ? 50 : 46,
+                      }}>
+                        {familyMembers.map((member) => {
+                          const isAcked = msg.acknowledged_by?.includes(member.id);
+                          return (
+                            <button
+                              key={member.id}
+                              onClick={() => acknowledgeMessage(msg.id, member.id)}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 4,
+                                padding: "3px 10px",
+                                borderRadius: 12,
+                                border: isAcked
+                                  ? "1px solid #22c55e"
+                                  : "1px solid #e5e7eb",
+                                background: isAcked
+                                  ? "#dcfce7"
+                                  : "#f8fafc",
+                                color: isAcked
+                                  ? "#15803d"
+                                  : "#64748b",
+                                fontSize: 12,
+                                fontWeight: 500,
+                                cursor: "pointer",
+                                transition: "all 0.2s ease",
+                                lineHeight: 1,
+                              }}
+                            >
+                              <span style={{ fontSize: 14 }}>{member.avatar}</span>
+                              <span>{member.name}</span>
+                              {isAcked && (
+                                <CheckCircleFilled style={{ fontSize: 12, color: "#22c55e" }} />
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 );
               })
             )}
           </div>
+          </div>
         </div>
+        </div>
+
+        {/* 旅游计划弹窗 */}
+        <Modal
+          open={!!selectedTravelPage}
+          onCancel={() => setSelectedTravelPage(null)}
+          footer={null}
+          title={selectedTravelPage?.title}
+          width="90vw"
+          style={{ top: 20 }}
+          styles={{ body: { height: "80vh", padding: 0 } }}
+          destroyOnClose
+        >
+          {selectedTravelPage && (
+            <iframe
+              src={`/files/${selectedTravelPage.slug}/${selectedTravelPage.entry_file}`}
+              style={{
+                width: "100%",
+                height: "100%",
+                border: "none",
+                borderRadius: 8,
+              }}
+              sandbox="allow-scripts allow-same-origin allow-forms allow-modals"
+              title={selectedTravelPage.title}
+            />
+          )}
+        </Modal>
       </div>
     </div>
   );

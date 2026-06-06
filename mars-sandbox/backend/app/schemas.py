@@ -535,6 +535,7 @@ class BoardMessageResponse(BaseModel):
     color: str
     pinned: int
     expires_at: Optional[date] = None
+    acknowledged_by: Optional[List[int]] = None  # 已确认的家庭成员 ID 列表
     created_at: datetime
     updated_at: datetime
 

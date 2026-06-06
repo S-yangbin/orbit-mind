@@ -286,5 +286,6 @@ class BoardMessage(Base):
     color = Column(String(16), nullable=False, default="yellow")  # yellow/pink/blue/green
     pinned = Column(SmallInteger, nullable=False, default=0)
     expires_at = Column(Date, nullable=True)  # 过期日期，NULL 表示永不过期
+    acknowledged_by = Column(Text, nullable=True)  # JSON: [member_id, ...] 已确认的家庭成员
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)

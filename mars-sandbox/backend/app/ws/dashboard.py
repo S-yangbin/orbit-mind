@@ -15,7 +15,7 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from ..database import SessionLocal
 from ..models import (
-    BoardMessage, Page, MealPlan, MealPlanItem, MealLog, Dish
+    BoardMessage, Page, MealPlan, MealPlanItem, MealLog, Dish, FamilyMember
 )
 from ..config import settings
 
@@ -82,10 +82,23 @@ def _get_board_messages(db) -> list[dict]:
             "color": m.color,
             "pinned": m.pinned,
             "expires_at": m.expires_at.isoformat() if m.expires_at else None,
+            "acknowledged_by": _parse_acknowledged_by(m),
             "created_at": m.created_at.isoformat() if m.created_at else None,
         }
         for m in messages
     ]
+
+
+def _parse_acknowledged_by(msg: BoardMessage) -> list:
+    """解析留言已确认成员 JSON 字段"""
+    if msg.acknowledged_by is None:
+        return []
+    if isinstance(msg.acknowledged_by, list):
+        return msg.acknowledged_by
+    try:
+        return json.loads(msg.acknowledged_by) or []
+    except (json.JSONDecodeError, TypeError):
+        return []
 
 
 def _parse_json_field(value) -> list | dict | None:
@@ -140,6 +153,16 @@ def _get_meal_plans(db) -> list[dict]:
             log_lookup[log.date] = {}
         log_lookup[log.date].setdefault(log.meal_type, []).append(log)
 
+    # 收集所有需要查询照片的 dish_id
+    all_dish_ids = set()
+    for plan in plans:
+        for item in plan.items:
+            if item.date and item.date.weekday() in (5, 6) and item.dish_id:
+                all_dish_ids.add(item.dish_id)
+
+    # 批量查询每个 dish_id 的最近一张 meal_log 照片
+    dish_photo_map = _batch_get_dish_photos(db, all_dish_ids)
+
     result = []
     processed_slots = set()  # (date, meal_type) already handled by logs
 
@@ -164,6 +187,7 @@ def _get_meal_plans(db) -> list[dict]:
                     "id": dish.id,
                     "name": dish.name,
                     "category": dish.category or "",
+                    "photo": dish_photo_map.get(dish.id),
                 },
                 "sort_order": item.sort_order,
                 "is_manual": item.is_manual,
@@ -209,6 +233,7 @@ def _get_meal_plans(db) -> list[dict]:
                             "id": dish_obj.id,
                             "name": dish_obj.name,
                             "category": dish_obj.category or "其他",
+                            "photo": log.image_path if dish_idx == 0 else dish_photo_map.get(dish_obj.id),
                         },
                         "sort_order": dish_idx,
                         "is_manual": 0,
@@ -241,6 +266,40 @@ def _get_meal_plans(db) -> list[dict]:
     # 按 week_start_date 排序
     result.sort(key=lambda x: x.get("week_start_date", ""))
     return result
+
+
+def _batch_get_dish_photos(db, dish_ids: set) -> dict:
+    """
+    批量查询每个 dish_id 最近的一张用餐照片。
+    返回 {dish_id: image_path}
+    """
+    if not dish_ids:
+        return {}
+
+    photo_map = {}
+    # 获取所有包含这些 dish_id 的 meal_log（最近3个月）
+    three_months_ago = date.today() - timedelta(days=90)
+    recent_logs = (
+        db.query(MealLog)
+        .filter(MealLog.date >= three_months_ago)
+        .order_by(MealLog.date.desc())
+        .all()
+    )
+
+    for log in recent_logs:
+        dishes = _parse_json_field(log.dishes_json) or []
+        for d in dishes:
+            if not isinstance(d, dict):
+                continue
+            did = d.get("dish_id")
+            if did and did in dish_ids and did not in photo_map:
+                photo_map[did] = log.image_path
+
+        # 如果所有 dish_id 都找到了，提前退出
+        if len(photo_map) >= len(dish_ids):
+            break
+
+    return photo_map
 
 
 def _get_recent_meals(db) -> list[dict]:
@@ -287,9 +346,24 @@ def _get_travel_pages(db) -> list[dict]:
             "title": p.custom_title or p.scanned_title or p.title or p.slug,
             "description": p.custom_description or p.scanned_description or p.description or "",
             "thumbnail": p.thumbnail,
+            "entry_file": p.entry_file,
             "updated_at": p.updated_at.isoformat() if p.updated_at else None,
         }
         for p in pages
+    ]
+
+
+def _get_family_members(db) -> list[dict]:
+    """获取所有家庭成员（用于看板留言确认）"""
+    members = db.query(FamilyMember).order_by(FamilyMember.id).all()
+    return [
+        {
+            "id": m.id,
+            "name": m.name,
+            "avatar": m.avatar,
+            "board_color": m.board_color,
+        }
+        for m in members
     ]
 
 
@@ -564,10 +638,56 @@ def build_full_dashboard_data() -> dict:
             "recent_meals": _get_recent_meals(db),
             "travel_pages": _get_travel_pages(db),
             "messages": _get_board_messages(db),
+            "family_members": _get_family_members(db),
             "weather": _get_weather(),
             "weather_forecast": _get_weather_forecast(),
             "background_image": _get_daily_background(),
         }
+    finally:
+        db.close()
+
+
+async def _handle_acknowledge_message(message_id, member_id, ws: WebSocket):
+    """
+    处理留言已读确认（toggle）：
+    - 如果成员未确认，则加入 acknowledged_by 列表
+    - 如果成员已确认，则从 acknowledged_by 列表移除（取消确认）
+    - 广播给所有 dashboard 连接
+    """
+    if not message_id or not member_id:
+        return
+
+    db = SessionLocal()
+    try:
+        msg = db.query(BoardMessage).filter(BoardMessage.id == message_id).first()
+        if not msg:
+            return
+
+        # 解析当前已确认列表
+        acknowledged = _parse_acknowledged_by(msg)
+        member_id_int = int(member_id)
+
+        # Toggle: 如果已确认则移除，否则添加
+        if member_id_int in acknowledged:
+            acknowledged.remove(member_id_int)
+            logger.info("留言 %d 被成员 %d 取消确认", message_id, member_id_int)
+        else:
+            acknowledged.append(member_id_int)
+            logger.info("留言 %d 被成员 %d 确认", message_id, member_id_int)
+
+        msg.acknowledged_by = json.dumps(acknowledged)
+        db.commit()
+        db.refresh(msg)
+
+        # 广播给所有 dashboard
+        await broadcast_to_dashboards({
+            "type": "message_acknowledged",
+            "message_id": message_id,
+            "member_id": member_id_int,
+            "acknowledged_by": acknowledged,
+        })
+    except Exception as e:
+        logger.error("处理留言确认失败: %s", e, exc_info=True)
     finally:
         db.close()
 
@@ -606,7 +726,7 @@ async def handle_dashboard_websocket(websocket: WebSocket):
 
         refresh_task = asyncio.create_task(periodic_refresh())
 
-        # 主循环：接收客户端消息（心跳 / 手动刷新请求）
+        # 主循环：接收客户端消息（心跳 / 手动刷新请求 / 留言确认）
         while True:
             try:
                 raw = await websocket.receive_text()
@@ -617,6 +737,12 @@ async def handle_dashboard_websocket(websocket: WebSocket):
                     await websocket.send_json({"type": "pong"})
                 elif msg_type == "refresh":
                     await send_full_update()
+                elif msg_type == "acknowledge_message":
+                    await _handle_acknowledge_message(
+                        msg.get("message_id"),
+                        msg.get("member_id"),
+                        websocket,
+                    )
 
             except WebSocketDisconnect:
                 break

@@ -65,6 +65,11 @@ def _migrate_db():
                 conn.execute(text("ALTER TABLE board_messages ADD COLUMN expires_at DATE NULL"))
                 conn.commit()
             logger.info("Migration: added 'expires_at' column to board_messages table")
+        if 'acknowledged_by' not in board_cols:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE board_messages ADD COLUMN acknowledged_by TEXT NULL"))
+                conn.commit()
+            logger.info("Migration: added 'acknowledged_by' column to board_messages table")
 
     # family_members: add board_color column (only if table exists)
     if 'family_members' in inspector.get_table_names():

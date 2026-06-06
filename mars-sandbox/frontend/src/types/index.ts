@@ -296,6 +296,7 @@ export interface BoardMessage {
   color: string;
   pinned: number;
   expires_at: string | null;
+  acknowledged_by: number[];
   created_at: string;
 }
 
@@ -326,6 +327,7 @@ export interface DashboardMealPlanItem {
     id: number;
     name: string;
     category: string;
+    photo: string | null;
   };
   sort_order: number;
   is_manual: number;
@@ -352,7 +354,15 @@ export interface DashboardTravelPage {
   title: string;
   description: string;
   thumbnail: string | null;
+  entry_file: string;
   updated_at: string | null;
+}
+
+export interface DashboardFamilyMember {
+  id: number;
+  name: string;
+  avatar: string;
+  board_color: string | null;
 }
 
 export interface WeatherInfo {
@@ -376,6 +386,7 @@ export interface DashboardData {
   recent_meals: DashboardRecentMeal[];
   travel_pages: DashboardTravelPage[];
   messages: BoardMessage[];
+  family_members: DashboardFamilyMember[];
   weather: WeatherInfo | null;
   weather_forecast: WeatherForecastItem[] | null;
   background_image: string | null;
@@ -386,4 +397,7 @@ export interface DashboardWsMessage {
   timestamp?: string;
   data?: DashboardData;
   message?: BoardMessage | { id: number };
+  message_id?: number;
+  member_id?: number;
+  acknowledged_by?: number[];
 }
