@@ -4,12 +4,7 @@ import { fetchTags, createTag } from "../api/tags";
 import { updatePage } from "../api/pages";
 import type { Page, Tag } from "../types";
 import { useIsMobile } from "../hooks/useIsMobile";
-
-const CATEGORY_OPTIONS = [
-  { label: '工作', value: 'work' },
-  { label: '生活', value: 'life' },
-  { label: '游戏', value: 'game' },
-];
+import { CATEGORY_OPTIONS } from "../utils";
 
 interface Props {
   page: Page;

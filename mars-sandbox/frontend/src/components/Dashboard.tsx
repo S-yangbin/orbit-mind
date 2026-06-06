@@ -11,6 +11,7 @@ import {
 } from "@ant-design/icons";
 import { DashboardPets } from "./DashboardPets";
 import { useDashboardWs } from "../hooks/useDashboardWs";
+import { resolveColor, formatBoardDateTime, mealPhotoToUrl } from "../utils";
 import type {
   DashboardMealPlanItem,
   BoardMessage,
@@ -21,13 +22,6 @@ import type {
 } from "../types";
 
 const { Title, Text } = Typography;
-
-const COLOR_MAP: Record<string, string> = {
-  yellow: "#fef9c3",
-  pink: "#fce7f3",
-  blue: "#dbeafe",
-  green: "#dcfce7",
-};
 
 // 留言作者首字母头像的柔和背景色
 const AVATAR_COLORS = [
@@ -43,20 +37,6 @@ function getAvatarColor(name: string): string {
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 }
 
-/** 兼容命名颜色和 hex 颜色 */
-function resolveColor(color: string): string {
-  return COLOR_MAP[color] || color;
-}
-
-function formatBoardDateTime(dateStr: string): string {
-  const d = new Date(dateStr);
-  return d.toLocaleString("zh-CN", {
-    month: "numeric",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
 
 const MEAL_TYPE_CONFIG: Record<string, { label: string; color: string }> = {
   lunch: { label: "全家午餐", color: "#f97316" },
@@ -119,10 +99,6 @@ const TRAVEL_GRADIENTS = [
   "linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%)",
 ];
 
-/** 菜品照片路径转 URL: /data/meals/xxx -> /meal-photos/xxx */
-function dishPhotoToUrl(path: string): string {
-  return path.replace(/^\/data\/meals\//, "/meal-photos/");
-}
 
 export function Dashboard() {
   const { data, isConnected, familyMembers, acknowledgeMessage } = useDashboardWs();
@@ -525,7 +501,7 @@ export function Dashboard() {
                                         <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 4 }}>
                                           {photo ? (
                                             <Image
-                                              src={dishPhotoToUrl(photo)}
+                                              src={mealPhotoToUrl(photo)}
                                               alt={item.dish.name}
                                               width={28}
                                               height={28}
@@ -535,7 +511,7 @@ export function Dashboard() {
                                                 cursor: "pointer",
                                                 border: "1px solid #e5e7eb",
                                               }}
-                                              preview={{ src: dishPhotoToUrl(photo) }}
+                                              preview={{ src: mealPhotoToUrl(photo) }}
                                               fallback="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjgiIGhlaWdodD0iMjgiIHZpZXdCb3g9IjAgMCAyOCAyOCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjgiIGhlaWdodD0iMjgiIHJ4PSI2IiBmaWxsPSIjZjFmNWY5Ii8+PC9zdmc+"
                                             />
                                           ) : null}

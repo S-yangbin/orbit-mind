@@ -16,6 +16,7 @@ import { fetchVideos, processVideo } from "../api/videos";
 import type { VideoInfo } from "../types";
 import { VideoUpload } from "./VideoUpload";
 import { useIsMobile } from "../hooks/useIsMobile";
+import { formatSize } from "../utils";
 
 const { Title, Text } = Typography;
 
@@ -67,12 +68,6 @@ export function VideoList() {
     } catch {
       message.error("重试失败");
     }
-  };
-
-  const formatSize = (bytes: number) => {
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
   };
 
   return (

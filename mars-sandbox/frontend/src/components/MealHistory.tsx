@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import {
   Card,
   Row,
@@ -25,6 +25,7 @@ import {
 import type { MealLog, MealHistoryStats } from "../types";
 import { fetchMealLogs, fetchHistoryStats } from "../api/meals";
 import { useIsMobile } from "../hooks/useIsMobile";
+import { mealPhotoToUrl } from "../utils";
 
 const { Text, Title } = Typography;
 
@@ -45,11 +46,7 @@ export function MealHistory() {
   const [loading, setLoading] = useState(true);
   const isMobile = useIsMobile();
 
-  useEffect(() => {
-    loadData(1);
-  }, []);
-
-  const loadData = async (p: number) => {
+  const loadData = useCallback(async (p: number) => {
     setLoading(true);
     try {
       const [statsData, logsData] = await Promise.all([
@@ -65,7 +62,11 @@ export function MealHistory() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadData(1);
+  }, [loadData]);
 
   if (loading && !stats) {
     return <Spin size="large" style={{ display: "block", margin: "80px auto" }} />;
@@ -167,7 +168,7 @@ export function MealHistory() {
                 <List.Item.Meta
                   avatar={
                     <Image
-                      src={`/meal-photos${log.image_path.replace("/data/meals", "")}`}
+                      src={log.image_path ? mealPhotoToUrl(log.image_path) : ""}
                       width={isMobile ? 52 : 64}
                       height={isMobile ? 52 : 64}
                       style={{ objectFit: "cover", borderRadius: 10 }}

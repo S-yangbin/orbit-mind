@@ -8,12 +8,7 @@ import { fetchPages } from "../api/pages";
 import { fetchTags } from "../api/tags";
 import type { Page, Tag as TagType } from "../types";
 import { useIsMobile } from "../hooks/useIsMobile";
-
-const CATEGORY_OPTIONS = [
-  { label: "工作", value: "work" },
-  { label: "生活", value: "life" },
-  { label: "游戏", value: "game" },
-];
+import { CATEGORY_OPTIONS } from "../utils";
 
 export function CardGrid() {
   const [pages, setPages] = useState<Page[]>([]);

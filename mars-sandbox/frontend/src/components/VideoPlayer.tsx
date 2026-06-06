@@ -89,6 +89,16 @@ export function VideoPlayer() {
     }
   }, [video, loadVideo]);
 
+  // Stable event handler functions (read from ref, not closure)
+  const onTimeUpdate = useCallback(() => {
+    if (videoRef.current) setCurrentTime(videoRef.current.currentTime);
+  }, []);
+  const onDurationLoad = useCallback(() => {
+    if (videoRef.current) setDuration(videoRef.current.duration);
+  }, []);
+  const onPlayEvent = useCallback(() => { setIsPlaying(true); }, []);
+  const onPauseEvent = useCallback(() => { setIsPlaying(false); }, []);
+
   // Time update — use callback ref so listeners attach immediately when <video> mounts
   const videoCallbackRef = useCallback((node: HTMLVideoElement | null) => {
     // Clean up old element
@@ -110,17 +120,7 @@ export function VideoPlayer() {
       if (node.duration && !isNaN(node.duration)) setDuration(node.duration);
       setIsPlaying(!node.paused);
     }
-  }, []);
-
-  // Stable event handler functions (read from ref, not closure)
-  function onTimeUpdate() {
-    if (videoRef.current) setCurrentTime(videoRef.current.currentTime);
-  }
-  function onDurationLoad() {
-    if (videoRef.current) setDuration(videoRef.current.duration);
-  }
-  function onPlayEvent() { setIsPlaying(true); }
-  function onPauseEvent() { setIsPlaying(false); }
+  }, [onTimeUpdate, onDurationLoad, onPlayEvent, onPauseEvent]);
 
   /** Read current playback time directly from the video element (fallback to state) */
   const getCurrentVideoTime = useCallback(() => {

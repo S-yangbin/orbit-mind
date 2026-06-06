@@ -25,46 +25,11 @@ import {
 import { fetchMessages, createMessage, updateMessage, deleteMessage, togglePin } from "../api/board";
 import { fetchMembers } from "../api/meals";
 import type { BoardMessage, FamilyMember } from "../types";
+import { resolveColor, formatBoardDateTime, PRESET_COLORS } from "../utils";
 import dayjs from "dayjs";
 
 const { TextArea } = Input;
 const { Text } = Typography;
-
-// 预设颜色（保留向后兼容，旧数据仍可能是命名颜色）
-const NAMED_COLOR_MAP: Record<string, string> = {
-  yellow: "#fef9c3",
-  pink: "#fce7f3",
-  blue: "#dbeafe",
-  green: "#dcfce7",
-};
-
-const PRESET_COLORS = [
-  "#fef9c3", // 黄
-  "#fce7f3", // 粉
-  "#dbeafe", // 蓝
-  "#dcfce7", // 绿
-  "#fef3c7", // 琥珀
-  "#e0e7ff", // 靛蓝
-  "#f3e8ff", // 紫
-  "#ffe4e6", // 玫瑰
-  "#fed7aa", // 橙
-  "#ffffff", // 白
-];
-
-/** 将颜色值（可能是命名色或 hex）统一转为 hex */
-function resolveColor(color: string): string {
-  return NAMED_COLOR_MAP[color] || color;
-}
-
-function formatDateTime(dateStr: string): string {
-  const d = new Date(dateStr);
-  return d.toLocaleString("zh-CN", {
-    month: "numeric",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
 
 export function BoardManagement() {
   const [messages, setMessages] = useState<BoardMessage[]>([]);
@@ -311,7 +276,7 @@ export function BoardManagement() {
                   color: "#64748b",
                 }}>
                   <span>
-                    {msg.author || "匿名"} · {formatDateTime(msg.created_at)}
+                    {msg.author || "匿名"} · {formatBoardDateTime(msg.created_at)}
                   </span>
                   <Space size="small">
                     {msg.expires_at && (

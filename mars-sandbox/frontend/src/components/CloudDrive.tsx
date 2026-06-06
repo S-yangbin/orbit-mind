@@ -47,6 +47,7 @@ import type { ColumnsType } from "antd/es/table";
 import type { MenuProps } from "antd";
 import dayjs from "dayjs";
 import { useIsMobile } from "../hooks/useIsMobile";
+import { formatSize } from "../utils";
 import {
   fetchDriveFiles,
   recordDriveFile,
@@ -114,14 +115,6 @@ function isTextFile(filename: string): boolean {
 
 function isPreviewable(filename: string, isDir: number): boolean {
   return !isDir && (isImageFile(filename) || isTextFile(filename));
-}
-
-function formatSize(bytes: number): string {
-  if (bytes === 0) return "—";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB", "TB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
 }
 
 function getFileIcon(filename: string, isDir: number) {
@@ -366,8 +359,9 @@ export function CloudDrive() {
       setFolderModalOpen(false);
       setNewFolderName("");
       loadFiles();
-    } catch (e: any) {
-      message.error(e?.response?.data?.detail || "创建文件夹失败");
+    } catch (e: unknown) {
+      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      message.error(detail || "创建文件夹失败");
     } finally {
       setFolderCreating(false);
     }
@@ -401,8 +395,9 @@ export function CloudDrive() {
       }
       setMoveModalOpen(false);
       loadFiles();
-    } catch (e: any) {
-      message.error(e?.response?.data?.detail || `${moveMode === "move" ? "移动" : "复制"}失败`);
+    } catch (e: unknown) {
+      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      message.error(detail || `${moveMode === "move" ? "移动" : "复制"}失败`);
     } finally {
       setMoving(false);
     }

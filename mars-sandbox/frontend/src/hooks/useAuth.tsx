@@ -1,5 +1,5 @@
 import { useState, useEffect, createContext, useContext } from "react";
-import { getAuthStatus, logout as apiLogout } from "../api/auth";
+import { getAuthStatus, login as apiLogin, logout as apiLogout } from "../api/auth";
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -23,7 +23,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (username: string, password: string): Promise<boolean> => {
     try {
-      const { login: apiLogin } = await import("../api/auth");
       const { data } = await apiLogin(username, password);
       if (data.success) {
         setIsAuthenticated(true);

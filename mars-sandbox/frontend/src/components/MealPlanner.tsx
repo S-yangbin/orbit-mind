@@ -33,6 +33,7 @@ import {
   fetchDishes,
 } from "../api/meals";
 import { useIsMobile } from "../hooks/useIsMobile";
+import { mealPhotoToUrl } from "../utils";
 
 const { Text, Title } = Typography;
 
@@ -86,10 +87,6 @@ function isToday(dateStr: string): boolean {
   return d.toDateString() === today.toDateString();
 }
 
-function photoPathToUrl(path: string): string {
-  // Convert /data/meals/2025-05/xxx.jpg -> /meal-photos/2025-05/xxx.jpg
-  return path.replace(/^\/data\/meals\//, "/meal-photos/");
-}
 
 interface WeekData {
   plan: MealPlan;
@@ -204,8 +201,9 @@ export function MealPlanner() {
       await generatePlan();
       await loadData();
       message.success("未来一个月周末菜单生成成功！可以手动调整后确认");
-    } catch (e: any) {
-      message.error(e?.response?.data?.detail || "AI 生成菜单失败，请稍后重试");
+    } catch (e: unknown) {
+      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      message.error(detail || "AI 生成菜单失败，请稍后重试");
     } finally {
       setGenerating(false);
     }
@@ -327,7 +325,7 @@ export function MealPlanner() {
       const isPast = isPastDate(dateStr);
       const today = isToday(dateStr);
       const isLogOnly = plan.status === "log";
-      const photoUrl = datePhotos[dateStr] ? photoPathToUrl(datePhotos[dateStr]) : null;
+      const photoUrl = datePhotos[dateStr] ? mealPhotoToUrl(datePhotos[dateStr]) : null;
 
       return (
         <div

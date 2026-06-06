@@ -20,6 +20,7 @@ import { PlusOutlined, DeleteOutlined, EditOutlined } from "@ant-design/icons";
 import type { FamilyMember } from "../types";
 import { fetchMembers, createMember, updateMember, deleteMember } from "../api/meals";
 import { useIsMobile } from "../hooks/useIsMobile";
+import { PRESET_COLORS } from "../utils";
 
 const { Text } = Typography;
 
@@ -28,16 +29,6 @@ const AVATAR_OPTIONS = [
   "🐱", "🐶", "🐰", "🐼", "🦊", "🐻", "🐨", "🐸",
 ];
 
-const DEFAULT_BOARD_COLORS = [
-  "#fef9c3", // 黄
-  "#fce7f3", // 粉
-  "#dbeafe", // 蓝
-  "#dcfce7", // 绿
-  "#fef3c7", // 琥珀
-  "#e0e7ff", // 靛蓝
-  "#f3e8ff", // 紫
-  "#ffe4e6", // 玫瑰
-];
 
 export function FamilySettings() {
   const [members, setMembers] = useState<FamilyMember[]>([]);
@@ -225,7 +216,7 @@ export function FamilySettings() {
         <ColorPicker
           value={color}
           onChange={(_, hex) => onChange(hex)}
-          presets={[{ label: "推荐", colors: DEFAULT_BOARD_COLORS }]}
+          presets={[{ label: "推荐", colors: PRESET_COLORS }]}
           showText
           size="small"
         />
