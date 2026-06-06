@@ -85,6 +85,12 @@ class Settings:
     def oss_video_base_url(self) -> str:
         return f"https://{self.OSS_BUCKET}.{self.OSS_ENDPOINT}/videos"
 
+    # Weather (OpenWeatherMap)
+    OPENWEATHERMAP_API_KEY: str = os.getenv("OPENWEATHERMAP_API_KEY", "")
+    WEATHER_LAT: str = os.getenv("WEATHER_LAT", "30.29")  # 杭州余杭区
+    WEATHER_LON: str = os.getenv("WEATHER_LON", "120.30")
+    WEATHER_CITY: str = os.getenv("WEATHER_CITY", "杭州")
+
     # External tool paths (auto-detected, can override via env)
     @property
     def FFMPEG_PATH(self) -> str:

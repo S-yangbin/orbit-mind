@@ -12,30 +12,52 @@ import {
   Spin,
   Typography,
   Divider,
+  Popconfirm,
+  ColorPicker,
+  Form,
 } from "antd";
-import { PlusOutlined, CloseCircleFilled } from "@ant-design/icons";
+import { PlusOutlined, DeleteOutlined, EditOutlined } from "@ant-design/icons";
 import type { FamilyMember } from "../types";
-import { fetchMembers, updateMember } from "../api/meals";
+import { fetchMembers, createMember, updateMember, deleteMember } from "../api/meals";
 import { useIsMobile } from "../hooks/useIsMobile";
 
 const { Text } = Typography;
 
-const ROLE_LABELS: Record<string, string> = {
-  father: "爸爸",
-  mother: "妈妈",
-  child: "孩子(6岁)",
-  grandma: "奶奶(59岁)",
-};
+const AVATAR_OPTIONS = [
+  "👨", "👩", "👧", "👦", "👴", "👵", "🧑", "👶",
+  "🐱", "🐶", "🐰", "🐼", "🦊", "🐻", "🐨", "🐸",
+];
+
+const DEFAULT_BOARD_COLORS = [
+  "#fef9c3", // 黄
+  "#fce7f3", // 粉
+  "#dbeafe", // 蓝
+  "#dcfce7", // 绿
+  "#fef3c7", // 琥珀
+  "#e0e7ff", // 靛蓝
+  "#f3e8ff", // 紫
+  "#ffe4e6", // 玫瑰
+];
 
 export function FamilySettings() {
   const [members, setMembers] = useState<FamilyMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [editModal, setEditModal] = useState<FamilyMember | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editAvatar, setEditAvatar] = useState("");
   const [editLikes, setEditLikes] = useState<string[]>([]);
   const [editDislikes, setEditDislikes] = useState<string[]>([]);
   const [editAllergies, setEditAllergies] = useState<string[]>([]);
   const [editNote, setEditNote] = useState("");
+  const [editBoardColor, setEditBoardColor] = useState<string>("#fef9c3");
   const [newTag, setNewTag] = useState({ likes: "", dislikes: "", allergies: "" });
+
+  // 新增成员弹窗
+  const [addModalOpen, setAddModalOpen] = useState(false);
+  const [addName, setAddName] = useState("");
+  const [addAvatar, setAddAvatar] = useState("🧑");
+  const [addBoardColor, setAddBoardColor] = useState("#fef9c3");
+
   const isMobile = useIsMobile();
 
   useEffect(() => {
@@ -55,25 +77,67 @@ export function FamilySettings() {
 
   const openEdit = (m: FamilyMember) => {
     setEditModal(m);
+    setEditName(m.name);
+    setEditAvatar(m.avatar);
     setEditLikes(m.preferences?.likes || []);
     setEditDislikes(m.preferences?.dislikes || []);
     setEditAllergies(m.allergies || []);
     setEditNote(m.preferences?.note || "");
+    setEditBoardColor(m.board_color || "#fef9c3");
     setNewTag({ likes: "", dislikes: "", allergies: "" });
   };
 
   const handleSave = async () => {
     if (!editModal) return;
+    if (!editName.trim()) {
+      message.warning("名字不能为空");
+      return;
+    }
     try {
       await updateMember(editModal.id, {
+        name: editName.trim(),
+        avatar: editAvatar,
         preferences: { likes: editLikes, dislikes: editDislikes, note: editNote },
         allergies: editAllergies,
+        board_color: editBoardColor,
       });
       message.success("保存成功");
       setEditModal(null);
       loadMembers();
     } catch {
       message.error("保存失败");
+    }
+  };
+
+  const handleAdd = async () => {
+    if (!addName.trim()) {
+      message.warning("请输入成员名字");
+      return;
+    }
+    try {
+      await createMember({
+        name: addName.trim(),
+        avatar: addAvatar,
+        board_color: addBoardColor,
+      });
+      message.success("添加成功");
+      setAddModalOpen(false);
+      setAddName("");
+      setAddAvatar("🧑");
+      setAddBoardColor("#fef9c3");
+      loadMembers();
+    } catch {
+      message.error("添加失败");
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    try {
+      await deleteMember(id);
+      message.success("删除成功");
+      loadMembers();
+    } catch {
+      message.error("删除失败");
     }
   };
 
@@ -129,8 +193,65 @@ export function FamilySettings() {
     </div>
   );
 
+  const renderAvatarPicker = (
+    selectedAvatar: string,
+    onSelect: (avatar: string) => void
+  ) => (
+    <div style={{ marginBottom: 12 }}>
+      <Text strong>头像</Text>
+      <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 8 }}>
+        {AVATAR_OPTIONS.map((a) => (
+          <Button
+            key={a}
+            type={selectedAvatar === a ? "primary" : "default"}
+            size="small"
+            onClick={() => onSelect(a)}
+            style={{ fontSize: 20, width: 40, height: 40, padding: 0 }}
+          >
+            {a}
+          </Button>
+        ))}
+      </div>
+    </div>
+  );
+
+  const renderBoardColorPicker = (
+    color: string,
+    onChange: (color: string) => void
+  ) => (
+    <div style={{ marginBottom: 12 }}>
+      <Text strong>留言板默认颜色</Text>
+      <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 8 }}>
+        <ColorPicker
+          value={color}
+          onChange={(_, hex) => onChange(hex)}
+          presets={[{ label: "推荐", colors: DEFAULT_BOARD_COLORS }]}
+          showText
+          size="small"
+        />
+        <div
+          style={{
+            width: 60,
+            height: 24,
+            borderRadius: 4,
+            background: color,
+            border: "1px solid #e2e8f0",
+          }}
+        />
+      </div>
+    </div>
+  );
+
   return (
     <div>
+      {/* 顶部操作栏 */}
+      <div style={{ marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <Text strong style={{ fontSize: 18 }}>家庭成员管理</Text>
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => setAddModalOpen(true)}>
+          添加成员
+        </Button>
+      </div>
+
       <Row gutter={[isMobile ? 10 : 16, isMobile ? 10 : 16]}>
         {members.map((m) => (
           <Col xs={24} sm={12} md={6} key={m.id}>
@@ -139,12 +260,40 @@ export function FamilySettings() {
               title={
                 <Space>
                   <span style={{ fontSize: 24 }}>{m.avatar}</span>
-                  <span style={{ fontWeight: 600 }}>{ROLE_LABELS[m.role] || m.name}</span>
+                  <span style={{ fontWeight: 600 }}>{m.name}</span>
                 </Space>
               }
-              extra={<Button size="small" onClick={() => openEdit(m)} style={{ borderRadius: 6 }}>编辑</Button>}
+              extra={
+                <Space size="small">
+                  <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(m)} style={{ borderRadius: 6 }}>
+                    编辑
+                  </Button>
+                  <Popconfirm
+                    title="确定删除该成员吗？"
+                    onConfirm={() => handleDelete(m.id)}
+                    okText="删除"
+                    cancelText="取消"
+                  >
+                    <Button size="small" danger icon={<DeleteOutlined />} style={{ borderRadius: 6 }} />
+                  </Popconfirm>
+                </Space>
+              }
               style={{ borderRadius: 12, border: "1px solid #f1f5f9" }}
             >
+              {m.board_color && (
+                <div style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                  <Text type="secondary">留言颜色:</Text>
+                  <div
+                    style={{
+                      width: 24,
+                      height: 24,
+                      borderRadius: 4,
+                      background: m.board_color,
+                      border: "1px solid #e2e8f0",
+                    }}
+                  />
+                </div>
+              )}
               <div style={{ marginBottom: 8 }}>
                 <Text type="secondary">喜欢: </Text>
                 {(m.preferences?.likes || []).length > 0
@@ -190,16 +339,31 @@ export function FamilySettings() {
         ))}
       </Row>
 
+      {/* 编辑成员弹窗 */}
       <Modal
-        title={`编辑偏好 - ${editModal ? (ROLE_LABELS[editModal.role] || editModal.name) : ""}`}
+        title="编辑家庭成员"
         open={!!editModal}
         onOk={handleSave}
         onCancel={() => setEditModal(null)}
         okText="保存"
         cancelText="取消"
+        width={500}
       >
         {editModal && (
           <>
+            <Form layout="vertical">
+              <Form.Item label="名字">
+                <Input
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  placeholder="输入名字"
+                  maxLength={20}
+                />
+              </Form.Item>
+            </Form>
+            {renderAvatarPicker(editAvatar, setEditAvatar)}
+            {renderBoardColorPicker(editBoardColor, setEditBoardColor)}
+            <Divider />
             {renderTagSection("喜欢的菜品", editLikes, "likes", "green")}
             {renderTagSection("不喜欢的菜品", editDislikes, "dislikes", "red")}
             {renderTagSection("过敏/忌口", editAllergies, "allergies", "orange")}
@@ -216,6 +380,29 @@ export function FamilySettings() {
             </div>
           </>
         )}
+      </Modal>
+
+      {/* 添加成员弹窗 */}
+      <Modal
+        title="添加家庭成员"
+        open={addModalOpen}
+        onOk={handleAdd}
+        onCancel={() => setAddModalOpen(false)}
+        okText="添加"
+        cancelText="取消"
+      >
+        <Form layout="vertical">
+          <Form.Item label="名字" required>
+            <Input
+              value={addName}
+              onChange={(e) => setAddName(e.target.value)}
+              placeholder="输入成员名字"
+              maxLength={20}
+            />
+          </Form.Item>
+        </Form>
+        {renderAvatarPicker(addAvatar, setAddAvatar)}
+        {renderBoardColorPicker(addBoardColor, setAddBoardColor)}
       </Modal>
     </div>
   );

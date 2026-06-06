@@ -166,9 +166,16 @@ export interface FamilyMember {
   avatar: string;
   preferences: { likes: string[]; dislikes: string[]; note: string } | null;
   allergies: string[] | null;
+  board_color: string | null;
   liked_dishes: { dish_id: number; dish_name: string; like_count: number; last_liked_at: string | null }[] | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface FamilyMemberCreate {
+  name: string;
+  avatar?: string;
+  board_color?: string;
 }
 
 export interface FamilyMemberUpdate {
@@ -176,6 +183,7 @@ export interface FamilyMemberUpdate {
   avatar?: string;
   preferences?: { likes: string[]; dislikes: string[]; note: string };
   allergies?: string[];
+  board_color?: string;
 }
 
 export interface Dish {
@@ -347,11 +355,30 @@ export interface DashboardTravelPage {
   updated_at: string | null;
 }
 
+export interface WeatherInfo {
+  temp: number;
+  feels_like?: number;
+  description: string;
+  icon: string;
+  city: string;
+}
+
+export interface WeatherForecastItem {
+  date: string;
+  icon: string;
+  temp_max: number;
+  temp_min: number;
+  description: string;
+}
+
 export interface DashboardData {
   meal_plans: DashboardMealPlan[];
   recent_meals: DashboardRecentMeal[];
   travel_pages: DashboardTravelPage[];
   messages: BoardMessage[];
+  weather: WeatherInfo | null;
+  weather_forecast: WeatherForecastItem[] | null;
+  background_image: string | null;
 }
 
 export interface DashboardWsMessage {

@@ -245,6 +245,7 @@ class FamilyMemberResponse(BaseModel):
     avatar: str
     preferences: Optional[Dict[str, Any]] = None
     allergies: Optional[List[str]] = None
+    board_color: Optional[str] = None  # hex color for board messages
     liked_dishes: Optional[List[Dict[str, Any]]] = None  # dynamically accumulated
     created_at: datetime
     updated_at: datetime
@@ -253,11 +254,18 @@ class FamilyMemberResponse(BaseModel):
         from_attributes = True
 
 
+class FamilyMemberCreate(BaseModel):
+    name: str
+    avatar: str = "\U0001f9d1"
+    board_color: Optional[str] = None
+
+
 class FamilyMemberUpdate(BaseModel):
     name: Optional[str] = None
     avatar: Optional[str] = None
     preferences: Optional[Dict[str, Any]] = None
     allergies: Optional[List[str]] = None
+    board_color: Optional[str] = None
 
 
 class FamilyMemberListResponse(BaseModel):

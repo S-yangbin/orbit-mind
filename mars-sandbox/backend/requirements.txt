@@ -10,6 +10,7 @@ playwright==1.49.1
 beautifulsoup4==4.12.3
 apscheduler==3.10.4
 Pillow>=10.0.0
+requests>=2.31.0
 
 # Alibaba Cloud STS SDK (for cloud drive STS token)
 alibabacloud-sts20150401>=1.0.0

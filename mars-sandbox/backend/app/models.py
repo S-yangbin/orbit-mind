@@ -161,10 +161,11 @@ class FamilyMember(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(50), nullable=False)
-    role = Column(String(20), nullable=False, unique=True)  # father/mother/child/grandma
+    role = Column(String(20), nullable=False, unique=True)  # father/mother/child/grandma or custom
     avatar = Column(String(16), nullable=False, default="\U0001f468")
     preferences = Column(Text, nullable=True)  # JSON: {"likes": [...], "dislikes": [...], "note": "..."}
     allergies = Column(Text, nullable=True)  # JSON: ["peanut", ...]
+    board_color = Column(String(16), nullable=True)  # hex color for board messages
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 

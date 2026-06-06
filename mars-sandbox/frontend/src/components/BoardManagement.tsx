@@ -3,6 +3,7 @@ import {
   Card,
   Button,
   Input,
+  Select,
   Space,
   Popconfirm,
   Empty,
@@ -22,7 +23,8 @@ import {
   ClockCircleOutlined,
 } from "@ant-design/icons";
 import { fetchMessages, createMessage, updateMessage, deleteMessage, togglePin } from "../api/board";
-import type { BoardMessage } from "../types";
+import { fetchMembers } from "../api/meals";
+import type { BoardMessage, FamilyMember } from "../types";
 import dayjs from "dayjs";
 
 const { TextArea } = Input;
@@ -66,6 +68,7 @@ function formatDateTime(dateStr: string): string {
 
 export function BoardManagement() {
   const [messages, setMessages] = useState<BoardMessage[]>([]);
+  const [members, setMembers] = useState<FamilyMember[]>([]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -96,7 +99,25 @@ export function BoardManagement() {
 
   useEffect(() => {
     loadMessages();
+    fetchMembers().then(setMembers).catch(() => {});
   }, [loadMessages]);
+
+  // 将家庭成员转为下拉选项
+  const memberOptions = members.map((m) => ({
+    label: `${m.avatar} ${m.name}`,
+    value: m.name,
+  }));
+
+  // 选择作者时，自动使用该成员的默认留言板颜色
+  const handleSelectAuthor = (name: string | undefined) => {
+    setNewAuthor(name || "");
+    if (name) {
+      const member = members.find((m) => m.name === name);
+      if (member?.board_color) {
+        setNewColor(member.board_color);
+      }
+    }
+  };
 
   const handleCreate = async () => {
     if (!newContent.trim()) {
@@ -190,7 +211,7 @@ export function BoardManagement() {
 
       {/* 新增留言表单 */}
       {showForm && (
-        <Card style={{ marginBottom: 24, background: newColor }}>
+        <Card style={{ marginBottom: 24, borderLeft: `4px solid ${newColor}`, background: "#fff" }}>
           <Space direction="vertical" style={{ width: "100%" }} size="middle">
             <TextArea
               placeholder="输入留言内容..."
@@ -201,11 +222,13 @@ export function BoardManagement() {
               showCount
             />
             <Space wrap>
-              <Input
-                placeholder="作者（可选）"
-                value={newAuthor}
-                onChange={(e) => setNewAuthor(e.target.value)}
-                style={{ width: 150 }}
+              <Select
+                placeholder="选择作者"
+                value={newAuthor || undefined}
+                onChange={handleSelectAuthor}
+                options={memberOptions}
+                allowClear
+                style={{ width: 140 }}
               />
               <Space size={4}>
                 <span style={{ fontSize: 13, color: "#64748b" }}>颜色：</span>
@@ -249,9 +272,10 @@ export function BoardManagement() {
               <Card
                 key={msg.id}
                 style={{
-                  background: resolveColor(msg.color),
+                  borderLeft: `4px solid ${resolveColor(msg.color)}`,
                   borderRadius: 8,
                   position: "relative",
+                  background: "#fff",
                 }}
                 styles={{ body: { padding: "16px 20px" } }}
               >
@@ -341,7 +365,7 @@ export function BoardManagement() {
         okText="保存"
         cancelText="取消"
       >
-        <div style={{ background: editColor, borderRadius: 8, padding: 16 }}>
+        <div style={{ background: "#fff", borderLeft: `4px solid ${editColor}`, borderRadius: 8, padding: 16 }}>
           <Space direction="vertical" style={{ width: "100%" }} size="middle">
             <TextArea
               value={editContent}
@@ -351,10 +375,12 @@ export function BoardManagement() {
               showCount
             />
             <Space wrap>
-              <Input
-                placeholder="作者"
-                value={editAuthor}
-                onChange={(e) => setEditAuthor(e.target.value)}
+              <Select
+                placeholder="选择作者"
+                value={editAuthor || undefined}
+                onChange={(val) => setEditAuthor(val || "")}
+                options={memberOptions}
+                allowClear
                 style={{ width: 140 }}
               />
               <Space size={4}>

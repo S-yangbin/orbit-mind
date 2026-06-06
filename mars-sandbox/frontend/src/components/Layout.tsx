@@ -1,17 +1,16 @@
 import { useState } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
-import { Layout as AntLayout, Menu, Button, Drawer } from "antd";
+import { Layout as AntLayout, Menu, Button, Drawer, Space } from "antd";
 import {
   HomeOutlined,
   LogoutOutlined,
   RocketOutlined,
-  ClusterOutlined,
   PlayCircleOutlined,
   CoffeeOutlined,
   CloudOutlined,
   MenuOutlined,
   MessageOutlined,
-  DashboardOutlined,
+  SettingOutlined,
 } from "@ant-design/icons";
 import { useAuth } from "../hooks/useAuth";
 import { useIsMobile } from "../hooks/useIsMobile";
@@ -20,12 +19,10 @@ const { Header, Content } = AntLayout;
 
 const NAV_ITEMS = [
   { key: "/", icon: <HomeOutlined />, label: "页面" },
-  { key: "/nodes", icon: <ClusterOutlined />, label: "节点" },
-  { key: "/videos", icon: <PlayCircleOutlined />, label: "视频" },
   { key: "/meals", icon: <CoffeeOutlined />, label: "吃什么" },
-  { key: "/drive", icon: <CloudOutlined />, label: "云盘" },
   { key: "/board", icon: <MessageOutlined />, label: "留言板" },
-  { key: "/dashboard", icon: <DashboardOutlined />, label: "看板" },
+  { key: "/videos", icon: <PlayCircleOutlined />, label: "视频" },
+  { key: "/drive", icon: <CloudOutlined />, label: "云盘" },
 ];
 
 export function Layout() {
@@ -69,19 +66,26 @@ export function Layout() {
                 onClick={() => setDrawerOpen(true)}
                 style={{ padding: 6, borderRadius: 8 }}
               />
-              <div style={{
-                width: 30,
-                height: 30,
-                borderRadius: 8,
-                background: "linear-gradient(135deg, #7c3aed, #6366f1)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flexShrink: 0,
-              }}>
+              <div
+                style={{
+                  width: 30,
+                  height: 30,
+                  borderRadius: 8,
+                  background: "linear-gradient(135deg, #7c3aed, #6366f1)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                  cursor: "pointer",
+                }}
+                onClick={() => navigate("/dashboard")}
+              >
                 <RocketOutlined style={{ fontSize: 14, color: "#fff" }} />
               </div>
-              <span style={{ fontSize: 16, fontWeight: 700, color: "#0f172a", whiteSpace: "nowrap" }}>
+              <span
+                style={{ fontSize: 16, fontWeight: 700, color: "#0f172a", whiteSpace: "nowrap", cursor: "pointer" }}
+                onClick={() => navigate("/dashboard")}
+              >
                 Mars
               </span>
             </>
@@ -100,7 +104,10 @@ export function Layout() {
               }}>
                 <RocketOutlined style={{ fontSize: 17, color: "#fff" }} />
               </div>
-              <span style={{ fontSize: 17, fontWeight: 700, color: "#0f172a", whiteSpace: "nowrap" }}>
+              <span
+                style={{ fontSize: 17, fontWeight: 700, color: "#0f172a", whiteSpace: "nowrap", cursor: "pointer" }}
+                onClick={() => navigate("/dashboard")}
+              >
                 Mars Sandbox
               </span>
               <Menu
@@ -122,13 +129,21 @@ export function Layout() {
           )}
         </div>
         {!isMobile && (
-          <Button
-            icon={<LogoutOutlined />}
-            onClick={logout}
-            style={{ borderRadius: 8, fontWeight: 500 }}
-          >
-            退出
-          </Button>
+          <Space size="small">
+            <Button
+              type={location.pathname.startsWith("/settings") ? "primary" : "text"}
+              icon={<SettingOutlined />}
+              onClick={() => navigate("/settings")}
+              style={{ borderRadius: 8 }}
+            />
+            <Button
+              icon={<LogoutOutlined />}
+              onClick={logout}
+              style={{ borderRadius: 8, fontWeight: 500 }}
+            >
+              退出
+            </Button>
+          </Space>
         )}
       </Header>
 
@@ -190,14 +205,24 @@ export function Layout() {
           borderTop: "1px solid #f1f5f9",
           background: "#fff",
         }}>
-          <Button
-            icon={<LogoutOutlined />}
-            onClick={logout}
-            block
-            style={{ borderRadius: 8 }}
-          >
-            退出登录
-          </Button>
+          <Space direction="vertical" style={{ width: "100%" }} size="small">
+            <Button
+              icon={<SettingOutlined />}
+              onClick={() => handleNav("/settings")}
+              block
+              style={{ borderRadius: 8 }}
+            >
+              设置
+            </Button>
+            <Button
+              icon={<LogoutOutlined />}
+              onClick={logout}
+              block
+              style={{ borderRadius: 8 }}
+            >
+              退出登录
+            </Button>
+          </Space>
         </div>
       </Drawer>
 

@@ -66,6 +66,15 @@ def _migrate_db():
                 conn.commit()
             logger.info("Migration: added 'expires_at' column to board_messages table")
 
+    # family_members: add board_color column (only if table exists)
+    if 'family_members' in inspector.get_table_names():
+        member_cols = [col['name'] for col in inspector.get_columns('family_members')]
+        if 'board_color' not in member_cols:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE family_members ADD COLUMN board_color VARCHAR(16) NULL"))
+                conn.commit()
+            logger.info("Migration: added 'board_color' column to family_members table")
+
 
 def _start_background_scan():
     """Initial scan on startup, then periodic."""

@@ -1,6 +1,7 @@
 import { api } from "./client";
 import type {
   FamilyMember,
+  FamilyMemberCreate,
   FamilyMemberUpdate,
   Dish,
   DishListResponse,
@@ -17,6 +18,15 @@ import type {
 export const fetchMembers = async (): Promise<FamilyMember[]> => {
   const { data } = await api.get<{ members: FamilyMember[] }>("/api/meals/members");
   return data.members;
+};
+
+export const createMember = async (payload: FamilyMemberCreate): Promise<FamilyMember> => {
+  const { data } = await api.post<FamilyMember>("/api/meals/members", payload);
+  return data;
+};
+
+export const deleteMember = async (id: number): Promise<void> => {
+  await api.delete(`/api/meals/members/${id}`);
 };
 
 export const updateMember = async (

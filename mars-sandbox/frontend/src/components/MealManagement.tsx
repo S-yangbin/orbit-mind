@@ -4,12 +4,10 @@ import {
   CalendarOutlined,
   CameraOutlined,
   HistoryOutlined,
-  SettingOutlined,
 } from "@ant-design/icons";
 import { MealPlanner } from "./MealPlanner";
 import { MealRecorder } from "./MealRecorder";
 import { MealHistory } from "./MealHistory";
-import { FamilySettings } from "./FamilySettings";
 
 const TAB_ITEMS = [
   {
@@ -38,15 +36,6 @@ const TAB_ITEMS = [
       </span>
     ),
     children: <MealHistory />,
-  },
-  {
-    key: "settings",
-    label: (
-      <span>
-        <SettingOutlined /> 设置
-      </span>
-    ),
-    children: <FamilySettings />,
   },
 ];
 

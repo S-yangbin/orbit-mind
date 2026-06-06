@@ -18,7 +18,7 @@ from ..database import get_db
 from ..dependencies import require_auth
 from ..models import FamilyMember, Dish, MealPlan, MealPlanItem, MealLog, DishPreference
 from ..schemas import (
-    FamilyMemberResponse, FamilyMemberUpdate, FamilyMemberListResponse,
+    FamilyMemberResponse, FamilyMemberCreate, FamilyMemberUpdate, FamilyMemberListResponse,
     DishResponse, DishCreate, DishListResponse,
     MealPlanResponse, MealPlanCurrentResponse, MealPlanGenerateRequest,
     MealPlanItemResponse, MealPlanItemAdd, MealPlanItemReplace, MealPlanItemDish,
@@ -92,6 +92,7 @@ def _member_to_response(m: FamilyMember, db: Session = None) -> FamilyMemberResp
         avatar=m.avatar,
         preferences=_parse_json_field(m.preferences),
         allergies=_parse_json_field(m.allergies),
+        board_color=m.board_color,
         liked_dishes=liked_dishes if liked_dishes else None,
         created_at=m.created_at,
         updated_at=m.updated_at,
@@ -190,6 +191,47 @@ async def list_members(
     return FamilyMemberListResponse(members=[_member_to_response(m, db) for m in members])
 
 
+@router.post("/members", response_model=FamilyMemberResponse)
+async def create_member(
+    payload: FamilyMemberCreate,
+    db: Session = Depends(get_db),
+    _=Depends(require_auth),
+):
+    """Create a new family member."""
+    # Generate unique role using timestamp
+    import time
+    role = f"custom_{int(time.time())}"
+    member = FamilyMember(
+        name=payload.name,
+        role=role,
+        avatar=payload.avatar,
+        board_color=payload.board_color,
+        preferences=json.dumps({"likes": [], "dislikes": [], "note": ""}),
+        allergies=json.dumps([]),
+    )
+    db.add(member)
+    db.commit()
+    db.refresh(member)
+    return _member_to_response(member, db)
+
+
+@router.delete("/members/{member_id}")
+async def delete_member(
+    member_id: int,
+    db: Session = Depends(get_db),
+    _=Depends(require_auth),
+):
+    """Delete a family member."""
+    member = db.query(FamilyMember).filter(FamilyMember.id == member_id).first()
+    if not member:
+        raise HTTPException(status_code=404, detail="Member not found")
+    # Also delete associated dish preferences
+    db.query(DishPreference).filter(DishPreference.member_id == member_id).delete()
+    db.delete(member)
+    db.commit()
+    return {"status": "ok"}
+
+
 @router.put("/members/{member_id}", response_model=FamilyMemberResponse)
 async def update_member(
     member_id: int,
@@ -209,6 +251,8 @@ async def update_member(
         member.preferences = json.dumps(payload.preferences, ensure_ascii=False)
     if payload.allergies is not None:
         member.allergies = json.dumps(payload.allergies, ensure_ascii=False)
+    if payload.board_color is not None:
+        member.board_color = payload.board_color
 
     db.commit()
     db.refresh(member)
