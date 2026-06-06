@@ -390,7 +390,6 @@ export function Dashboard() {
           {/* 左栏 - 食谱安排（周末卡片） */}
           <div style={{
             overflow: "auto",
-            backdropFilter: "blur(20px)",
             borderRadius: 16,
             padding: "16px 20px",
           }}>
@@ -429,9 +428,7 @@ export function Dashboard() {
                           key={day.dateStr}
                           style={{
                             flex: 1,
-                            background: day.isToday
-                              ? "linear-gradient(135deg, rgba(124,58,237,0.15) 0%, rgba(99,102,241,0.1) 100%)"
-                              : "rgba(255,255,255,0.9)",
+                            background: "#fff",
                             borderRadius: 16,
                             padding: "12px 14px",
                             border: day.isToday
@@ -508,7 +505,6 @@ export function Dashboard() {
           {/* 中栏 - 旅游计划（瀑布流照片墙） */}
           <div style={{
             overflow: "auto",
-            backdropFilter: "blur(20px)",
             borderRadius: 16,
             padding: "16px 20px",
           }}>
@@ -538,7 +534,7 @@ export function Dashboard() {
                         marginBottom: 12,
                         borderRadius: 16,
                         overflow: "hidden",
-                        background: hasImage ? "rgba(255,255,255,0.9)" : gradient,
+                        background: hasImage ? "#fff" : gradient,
                         boxShadow: "0 2px 12px rgba(0,0,0,0.08)",
                         transition: "transform 0.2s ease, box-shadow 0.2s ease",
                         cursor: "pointer",
@@ -632,7 +628,6 @@ export function Dashboard() {
           {/* 右栏 - 留言板（家庭卡片） */}
           <div style={{
             overflow: "auto",
-            backdropFilter: "blur(20px)",
             borderRadius: 16,
             padding: "16px 20px",
           }}>
@@ -656,7 +651,7 @@ export function Dashboard() {
                   <div
                     key={msg.id}
                     style={{
-                      background: isPinned ? "rgba(255,251,235,0.9)" : "rgba(255,255,255,0.9)",
+                      background: isPinned ? "#fffbeb" : "#fff",
                       borderLeft: `4px solid ${resolveColor(msg.color)}`,
                       borderRadius: 16,
                       padding: isPinned ? "16px 18px" : "14px 16px",
