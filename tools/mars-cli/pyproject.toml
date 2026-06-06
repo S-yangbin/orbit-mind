@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mars-cli"
-version = "1.0.0"
-description = "mars-sandbox 命令行客户端 - 通过 HTTP API 管理远程节点并执行命令"
+version = "2.0.0"
+description = "mars-sandbox 命令行客户端 - AI Agent 友好的家庭中枢管理平台全功能 CLI"
 license = "MIT"
 requires-python = ">=3.9"
 authors = [
@@ -46,5 +46,5 @@ where = ["."]
 include = ["mars_cli*"]
 
 [project.readme]
-text = "mars-sandbox CLI 客户端 - 通过 HTTP API 管理远程 home-agent 节点，支持节点查询、远程命令执行等操作。"
+text = "mars-sandbox 全功能 CLI 客户端 - 面向 AI Agent，支持节点管理、留言板、餐饮计划、视频学习、云盘、页面、标签、扫描等全部功能。"
 content-type = "text/plain"
