@@ -279,3 +279,84 @@ export interface MealHistoryStats {
   top_repeated: { dish_id: number | null; name: string; count: number; category: string }[];
   daily_counts: { date: string; dish_count: number; unique_count: number }[];
 }
+
+// --- Board Messages ---
+export interface BoardMessage {
+  id: number;
+  content: string;
+  author: string;
+  color: string;
+  pinned: number;
+  expires_at: string | null;
+  created_at: string;
+}
+
+export interface BoardMessageListResponse {
+  items: BoardMessage[];
+}
+
+export interface BoardMessageCreate {
+  content: string;
+  author?: string;
+  color?: string;
+  expires_at?: string | null;
+}
+
+export interface BoardMessageUpdate {
+  content?: string;
+  author?: string;
+  color?: string;
+  expires_at?: string | null;
+}
+
+// --- Dashboard ---
+export interface DashboardMealPlanItem {
+  id: number;
+  date: string;
+  meal_type: "breakfast" | "lunch" | "dinner";
+  dish: {
+    id: number;
+    name: string;
+    category: string;
+  };
+  sort_order: number;
+  is_manual: number;
+}
+
+export interface DashboardMealPlan {
+  id: number;
+  week_start_date: string;
+  status: string;
+  items: DashboardMealPlanItem[];
+}
+
+export interface DashboardRecentMeal {
+  id: number;
+  date: string;
+  meal_type: string;
+  image_path: string;
+  dishes: { dish_id?: number; name: string }[];
+}
+
+export interface DashboardTravelPage {
+  id: number;
+  slug: string;
+  title: string;
+  description: string;
+  thumbnail: string | null;
+  updated_at: string | null;
+}
+
+export interface DashboardData {
+  meal_plans: DashboardMealPlan[];
+  recent_meals: DashboardRecentMeal[];
+  travel_pages: DashboardTravelPage[];
+  messages: BoardMessage[];
+}
+
+export interface DashboardWsMessage {
+  type: string;
+  timestamp?: string;
+  data?: DashboardData;
+  message?: BoardMessage | { id: number };
+}

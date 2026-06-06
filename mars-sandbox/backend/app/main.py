@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from .config import settings
 from .database import init_db, SessionLocal, engine
 from .auth import get_current_user
-from .routers import auth, pages, tags, scan, nodes, commands, videos, meals, drive
+from .routers import auth, pages, tags, scan, nodes, commands, videos, meals, drive, board
 from .scanner import scan_directories
 from .ws.router import router as ws_router
 
@@ -56,6 +56,15 @@ def _migrate_db():
                 ))
                 conn.commit()
             logger.info("Migration: added 'parent_id' column to drive_files table")
+
+    # board_messages: add expires_at column (only if table exists)
+    if 'board_messages' in inspector.get_table_names():
+        board_cols = [col['name'] for col in inspector.get_columns('board_messages')]
+        if 'expires_at' not in board_cols:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE board_messages ADD COLUMN expires_at DATE NULL"))
+                conn.commit()
+            logger.info("Migration: added 'expires_at' column to board_messages table")
 
 
 def _start_background_scan():
@@ -126,6 +135,7 @@ app.include_router(commands.router)
 app.include_router(videos.router)
 app.include_router(meals.router)
 app.include_router(drive.router)
+app.include_router(board.router)
 app.include_router(ws_router)  # WebSocket路由
 
 
@@ -197,6 +207,27 @@ async def serve_project_file(slug: str, path: str, request: Request):
 
 if FRONTEND_DIST.exists():
     app.mount("/app", StaticFiles(directory=str(FRONTEND_DIST), html=True), name="frontend")
+
+
+# PWA manifest
+@app.get("/manifest.json")
+async def pwa_manifest():
+    manifest_path = FRONTEND_DIST / "manifest.json"
+    if manifest_path.exists():
+        return FileResponse(str(manifest_path), media_type="application/json")
+    return JSONResponse({"detail": "Manifest not found"}, status_code=404)
+
+
+# PWA icons
+@app.get("/icons/{filename}")
+async def pwa_icons(filename: str):
+    icon_path = FRONTEND_DIST / "icons" / filename
+    if icon_path.exists() and icon_path.is_file():
+        # Security: prevent path traversal
+        if ".." in filename or "/" in filename:
+            raise HTTPException(status_code=403, detail="Forbidden")
+        return FileResponse(str(icon_path), media_type="image/png")
+    raise HTTPException(status_code=404, detail="Icon not found")
 
 
 @app.get("/")

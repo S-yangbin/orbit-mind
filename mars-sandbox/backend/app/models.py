@@ -269,3 +269,21 @@ class DriveFile(Base):
     is_dir = Column(SmallInteger, nullable=False, default=0, index=True)  # 0=file, 1=directory
     parent_id = Column(Integer, ForeignKey("drive_files.id", ondelete="CASCADE"), nullable=True, index=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+# ============================================================
+# Board Message Models
+# ============================================================
+
+class BoardMessage(Base):
+    """Family board message (sticky note style)."""
+    __tablename__ = "board_messages"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    content = Column(Text, nullable=False)
+    author = Column(String(50), nullable=False, default="")
+    color = Column(String(16), nullable=False, default="yellow")  # yellow/pink/blue/green
+    pinned = Column(SmallInteger, nullable=False, default=0)
+    expires_at = Column(Date, nullable=True)  # 过期日期，NULL 表示永不过期
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)

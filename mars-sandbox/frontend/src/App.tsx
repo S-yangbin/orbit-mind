@@ -12,6 +12,8 @@ const VideoList = lazy(() => import("./components/VideoList").then(m => ({ defau
 const VideoPlayer = lazy(() => import("./components/VideoPlayer").then(m => ({ default: m.VideoPlayer })));
 const MealManagement = lazy(() => import("./components/MealManagement").then(m => ({ default: m.MealManagement })));
 const CloudDrive = lazy(() => import("./components/CloudDrive").then(m => ({ default: m.CloudDrive })));
+const BoardManagement = lazy(() => import("./components/BoardManagement").then(m => ({ default: m.BoardManagement })));
+const Dashboard = lazy(() => import("./components/Dashboard").then(m => ({ default: m.Dashboard })));
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
@@ -28,6 +30,12 @@ function AppRoutes() {
       <Route path="/login" element={
         isAuthenticated ? <Navigate to="/" replace /> : <LoginPage />
       } />
+      {/* 全屏看板 - 无导航栏 */}
+      <Route path="/dashboard" element={
+        <ProtectedRoute>
+          <Dashboard />
+        </ProtectedRoute>
+      } />
       <Route
         path="/"
         element={
@@ -43,6 +51,7 @@ function AppRoutes() {
         <Route path="videos/:id" element={<VideoPlayer />} />
         <Route path="meals" element={<MealManagement />} />
         <Route path="drive" element={<CloudDrive />} />
+        <Route path="board" element={<BoardManagement />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

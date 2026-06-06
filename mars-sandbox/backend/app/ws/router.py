@@ -1,6 +1,6 @@
 """
 WebSocket router
-处理home-agent的WebSocket连接请求
+处理home-agent和dashboard的WebSocket连接请求
 """
 
 import logging
@@ -8,6 +8,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 from urllib.parse import parse_qs, urlparse
 
 from .handlers import handle_websocket_connection
+from .dashboard import handle_dashboard_websocket
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,21 @@ async def websocket_endpoint(websocket: WebSocket, node_id: str):
         logger.info("节点 %s WebSocket连接断开", node_id)
     except Exception as e:
         logger.error("节点 %s WebSocket处理异常: %s", node_id, str(e), exc_info=True)
+        try:
+            await websocket.close()
+        except:
+            pass
+
+
+@router.websocket("/ws/dashboard")
+async def dashboard_websocket_endpoint(websocket: WebSocket):
+    """WebSocket端点,供家庭看板前端连接"""
+    try:
+        await handle_dashboard_websocket(websocket)
+    except WebSocketDisconnect:
+        logger.info("Dashboard WebSocket连接断开")
+    except Exception as e:
+        logger.error("Dashboard WebSocket处理异常: %s", str(e), exc_info=True)
         try:
             await websocket.close()
         except:

@@ -503,3 +503,36 @@ class STSTokenResponse(BaseModel):
     region: str
     bucket: str
     prefix: str
+
+
+# --- Board Messages ---
+class BoardMessageCreate(BaseModel):
+    content: str
+    author: str = ""
+    color: str = "yellow"
+    expires_at: Optional[date] = None
+
+
+class BoardMessageUpdate(BaseModel):
+    content: Optional[str] = None
+    author: Optional[str] = None
+    color: Optional[str] = None
+    expires_at: Optional[date] = None
+
+
+class BoardMessageResponse(BaseModel):
+    id: int
+    content: str
+    author: str
+    color: str
+    pinned: int
+    expires_at: Optional[date] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class BoardMessageListResponse(BaseModel):
+    items: List[BoardMessageResponse]

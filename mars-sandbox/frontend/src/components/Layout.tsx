@@ -10,6 +10,8 @@ import {
   CoffeeOutlined,
   CloudOutlined,
   MenuOutlined,
+  MessageOutlined,
+  DashboardOutlined,
 } from "@ant-design/icons";
 import { useAuth } from "../hooks/useAuth";
 import { useIsMobile } from "../hooks/useIsMobile";
@@ -22,6 +24,8 @@ const NAV_ITEMS = [
   { key: "/videos", icon: <PlayCircleOutlined />, label: "视频" },
   { key: "/meals", icon: <CoffeeOutlined />, label: "吃什么" },
   { key: "/drive", icon: <CloudOutlined />, label: "云盘" },
+  { key: "/board", icon: <MessageOutlined />, label: "留言板" },
+  { key: "/dashboard", icon: <DashboardOutlined />, label: "看板" },
 ];
 
 export function Layout() {
