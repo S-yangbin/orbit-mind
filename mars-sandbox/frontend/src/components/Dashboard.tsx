@@ -73,11 +73,17 @@ const BUILT_IN_QUOTES = [
   "所有的好事，都在慢慢发生。",
 ];
 
-/** 根据日期哈希从数组中选取箴言（同一天返回相同） */
-function pickBuiltinQuote(): string {
+/** 箴言前置图标池 */
+const QUOTE_ICONS = [
+  "✨", "🌿", "🌸", "🍃", "🌙", "🌊", "🦋",
+  "🍂", "☀️", "🌷", "🍀", "🎋", "🌺", "🐚",
+];
+
+/** 根据日期哈希从数组中选取（同一天返回相同） */
+function pickByDate<T>(arr: T[]): T {
   const d = new Date();
   const dayIndex = d.getFullYear() * 1000 + d.getMonth() * 31 + d.getDate();
-  return BUILT_IN_QUOTES[dayIndex % BUILT_IN_QUOTES.length];
+  return arr[dayIndex % arr.length];
 }
 
 function weatherIconUrl(icon: string, size: "2x" | "4x" = "2x"): string {
@@ -105,7 +111,8 @@ export function Dashboard() {
   const { data, isConnected, familyMembers, acknowledgeMessage } = useDashboardWs();
   const [now, setNow] = useState(new Date());
   const [selectedTravelPage, setSelectedTravelPage] = useState<DashboardTravelPage | null>(null);
-  const [dailyQuote, setDailyQuote] = useState<string>(pickBuiltinQuote());
+  const [dailyQuote, setDailyQuote] = useState<string>(pickByDate(BUILT_IN_QUOTES));
+  const quoteIcon = useMemo(() => pickByDate(QUOTE_ICONS), []);
 
   // 每分钟刷新（用于夜间模式判断）
   useEffect(() => {
@@ -297,6 +304,7 @@ export function Dashboard() {
               letterSpacing: "0.5px",
               fontStyle: "italic",
             }}>
+              <span style={{ fontStyle: "normal", marginRight: 8 }}>{quoteIcon}</span>
               「{dailyQuote}」
             </div>
           </div>
