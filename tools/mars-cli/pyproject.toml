@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mars-cli"
-version = "2.0.0"
+version = "2.1.0"
 description = "mars-sandbox 命令行客户端 - AI Agent 友好的家庭中枢管理平台全功能 CLI"
 license = "MIT"
 requires-python = ">=3.9"
