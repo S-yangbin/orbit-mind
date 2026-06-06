@@ -37,6 +37,7 @@ from mars_cli import cmd_tags
 from mars_cli import cmd_videos
 from mars_cli import cmd_drive
 from mars_cli import cmd_scan
+from mars_cli import cmd_config
 
 # ─── Typer App ─────────────────────────────────────────────────────────────
 
@@ -103,6 +104,10 @@ def main(
     _username_opt = username
     _password_opt = password
 
+    # config 子命令不需要连接服务器，跳过客户端初始化
+    if len(sys.argv) > 1 and sys.argv[1] == "config":
+        return
+
     client = MarsClient(
         base_url=_url_opt,
         api_key=_api_key_opt,
@@ -122,6 +127,7 @@ app.add_typer(cmd_tags.app, name="tags", help="标签管理")
 app.add_typer(cmd_videos.app, name="videos", help="视频学习管理（分段、笔记、进度）")
 app.add_typer(cmd_drive.app, name="drive", help="云盘文件与文件夹管理")
 app.add_typer(cmd_scan.app, name="scan", help="页面目录扫描")
+app.add_typer(cmd_config.app, name="config", help="管理 CLI 配置文件")
 
 
 # ─── 顶层命令: 健康检查 ────────────────────────────────────────────────────
