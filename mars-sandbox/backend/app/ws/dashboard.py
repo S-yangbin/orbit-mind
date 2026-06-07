@@ -7,11 +7,13 @@ import asyncio
 import json
 import logging
 import random
+import threading
 import time
 import requests
 from datetime import datetime, date, timedelta
 from typing import Set, Optional
 
+from sqlalchemy.orm import joinedload
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from ..database import SessionLocal
@@ -31,6 +33,7 @@ _weather_cache: dict = {"data": None, "timestamp": 0}
 _weather_forecast_cache: dict = {"data": None, "timestamp": 0}
 _background_cache: dict = {"data": None, "timestamp": 0}
 _bing_images_cache: dict = {"data": None, "timestamp": 0}  # 缓存 Bing 8张图片 URL 列表
+_cache_lock = threading.Lock()  # 保护缓存 dict 的跨线程读写
 
 WEATHER_CACHE_TTL = 30 * 60  # 30分钟
 WEATHER_FORECAST_CACHE_TTL = 60 * 60  # 1小时
@@ -55,15 +58,19 @@ async def broadcast_to_dashboards(msg: dict):
     if not _dashboard_connections:
         return
     payload = json.dumps(msg, ensure_ascii=False, default=str)
-    dead: list[WebSocket] = []
+    # 快照连接集合后释放锁，避免持锁期间执行网络 I/O 阻塞其他操作
     async with _lock:
-        for ws in _dashboard_connections:
-            try:
-                await ws.send_text(payload)
-            except Exception:
-                dead.append(ws)
-        for ws in dead:
-            _dashboard_connections.discard(ws)
+        connections = list(_dashboard_connections)
+    dead: list[WebSocket] = []
+    for ws in connections:
+        try:
+            await ws.send_text(payload)
+        except Exception:
+            dead.append(ws)
+    if dead:
+        async with _lock:
+            for ws in dead:
+                _dashboard_connections.discard(ws)
 
 
 def _get_board_messages(db) -> list[dict]:
@@ -72,7 +79,7 @@ def _get_board_messages(db) -> list[dict]:
     messages = (
         db.query(BoardMessage)
         .filter(
-            (BoardMessage.expires_at == None) | (BoardMessage.expires_at >= today)
+            (BoardMessage.expires_at.is_(None)) | (BoardMessage.expires_at >= today)
         )
         .order_by(BoardMessage.pinned.desc(), BoardMessage.created_at.desc())
         .all()
@@ -132,6 +139,7 @@ def _get_meal_plans(db) -> list[dict]:
 
     plans = (
         db.query(MealPlan)
+        .options(joinedload(MealPlan.items).joinedload(MealPlanItem.dish))
         .filter(
             MealPlan.week_start_date >= start_monday,
             MealPlan.week_start_date < end_monday
@@ -167,7 +175,6 @@ def _get_meal_plans(db) -> list[dict]:
     dish_photo_map = _batch_get_dish_photos(db, all_dish_ids)
 
     result = []
-    processed_slots = set()  # (date, meal_type) already handled by logs
 
     for plan in plans:
         items = []
@@ -176,9 +183,10 @@ def _get_meal_plans(db) -> list[dict]:
             if not item.date or item.date.weekday() not in (5, 6):
                 continue
 
-            # 有用餐记录的日期（含今天），跳过计划项（后面用 log 替代）
-            if item.date <= today and item.date in log_lookup:
-                processed_slots.add((item.date, item.meal_type))
+            # 仅跳过有对应用餐记录的 (date, meal_type) 组合
+            if (item.date <= today
+                    and item.date in log_lookup
+                    and item.meal_type in log_lookup[item.date]):
                 continue
 
             dish = item.dish
@@ -211,6 +219,26 @@ def _get_meal_plans(db) -> list[dict]:
             continue
 
         for meal_type, logs in meal_types.items():
+            # 批量预加载本轮所需的全部 Dish，避免循环内逐条查询（N+1）
+            needed_ids = set()
+            needed_names = set()
+            for log in logs:
+                for d in (_parse_json_field(log.dishes_json) or []):
+                    if isinstance(d, dict) and "name" in d:
+                        if d.get("dish_id"):
+                            needed_ids.add(d["dish_id"])
+                        needed_names.add(d["name"])
+            dishes_by_id: dict = {}
+            dishes_by_name: dict = {}
+            if needed_ids:
+                dishes_by_id = {
+                    d.id: d for d in db.query(Dish).filter(Dish.id.in_(needed_ids)).all()
+                }
+            if needed_names:
+                dishes_by_name = {
+                    d.name: d for d in db.query(Dish).filter(Dish.name.in_(needed_names)).all()
+                }
+
             seen_dish_ids = set()
             log_items = []
             dish_idx = 0
@@ -220,11 +248,9 @@ def _get_meal_plans(db) -> list[dict]:
                     if not isinstance(d, dict) or "name" not in d:
                         continue
                     dish_id = d.get("dish_id")
-                    dish_obj = None
-                    if dish_id:
-                        dish_obj = db.query(Dish).filter(Dish.id == dish_id).first()
+                    dish_obj = dishes_by_id.get(dish_id) if dish_id else None
                     if not dish_obj:
-                        dish_obj = db.query(Dish).filter(Dish.name == d["name"]).first()
+                        dish_obj = dishes_by_name.get(d["name"])
                     if not dish_obj or dish_obj.id in seen_dish_ids:
                         continue
                     seen_dish_ids.add(dish_obj.id)
@@ -280,11 +306,12 @@ def _batch_get_dish_photos(db, dish_ids: set) -> dict:
         return {}
 
     photo_map = {}
-    # 获取所有包含这些 dish_id 的 meal_log（最近3个月）
+    # 获取包含目标 dish_id 的 meal_log（SQL 端预过滤减少数据加载量）
     three_months_ago = date.today() - timedelta(days=90)
+    conditions = [MealLog.dishes_json.contains(str(did)) for did in dish_ids]
     recent_logs = (
         db.query(MealLog)
-        .filter(MealLog.date >= three_months_ago)
+        .filter(MealLog.date >= three_months_ago, *conditions)
         .order_by(MealLog.date.desc())
         .all()
     )
@@ -317,12 +344,7 @@ def _get_recent_meals(db) -> list[dict]:
     )
     result = []
     for log in logs:
-        dishes = []
-        if log.dishes_json:
-            try:
-                dishes = json.loads(log.dishes_json) if isinstance(log.dishes_json, str) else log.dishes_json
-            except (json.JSONDecodeError, TypeError):
-                dishes = []
+        dishes = _parse_json_field(log.dishes_json) or []
         result.append({
             "id": log.id,
             "date": log.date.isoformat() if log.date else None,
@@ -437,7 +459,13 @@ def _get_weather_from_wttr() -> Optional[dict]:
         desc_list = curr.get("lang_zh", curr.get("weatherDesc", [{}]))
         desc = desc_list[0].get("value", "") if desc_list else ""
         code = curr.get("weatherCode", "113")
-        is_day = int(curr.get("visibility", "10")) > 0  # 粗略判断
+        # 使用 observation_time（HHMM 格式）判断昼夜，比 visibility 更准确
+        obs_time = curr.get("observation_time", "1200")
+        try:
+            obs_hour = int(obs_time[:2])
+        except (ValueError, IndexError):
+            obs_hour = 12
+        is_day = 6 <= obs_hour < 18
 
         weather_info = {
             "temp": temp,
@@ -498,9 +526,10 @@ def _get_weather() -> Optional[dict]:
     获取当前天气：优先 OpenWeatherMap，失败则 fallback wttr.in
     缓存 30 分钟
     """
-    now = time.time()
-    if _weather_cache["data"] and (now - _weather_cache["timestamp"]) < WEATHER_CACHE_TTL:
-        return _weather_cache["data"]
+    with _cache_lock:
+        now = time.time()
+        if _weather_cache["data"] and (now - _weather_cache["timestamp"]) < WEATHER_CACHE_TTL:
+            return _weather_cache["data"]
 
     api_key = settings.OPENWEATHERMAP_API_KEY
     if api_key:
@@ -521,8 +550,9 @@ def _get_weather() -> Optional[dict]:
                 "icon": data["weather"][0]["icon"] if data.get("weather") else "01d",
                 "city": settings.WEATHER_CITY,
             }
-            _weather_cache["data"] = weather_info
-            _weather_cache["timestamp"] = now
+            with _cache_lock:
+                _weather_cache["data"] = weather_info
+                _weather_cache["timestamp"] = now
             logger.info("OpenWeatherMap 天气已更新: %s°C %s", weather_info["temp"], weather_info["description"])
             return weather_info
         except Exception as e:
@@ -531,8 +561,9 @@ def _get_weather() -> Optional[dict]:
     # fallback: wttr.in
     result = _get_weather_from_wttr()
     if result:
-        _weather_cache["data"] = result
-        _weather_cache["timestamp"] = now
+        with _cache_lock:
+            _weather_cache["data"] = result
+            _weather_cache["timestamp"] = now
     return result or _weather_cache["data"]
 
 
@@ -541,9 +572,10 @@ def _get_weather_forecast() -> Optional[list[dict]]:
     获取未来 3 天天气预报：优先 OpenWeatherMap，失败则 fallback wttr.in
     缓存 1 小时
     """
-    now = time.time()
-    if _weather_forecast_cache["data"] and (now - _weather_forecast_cache["timestamp"]) < WEATHER_FORECAST_CACHE_TTL:
-        return _weather_forecast_cache["data"]
+    with _cache_lock:
+        now = time.time()
+        if _weather_forecast_cache["data"] and (now - _weather_forecast_cache["timestamp"]) < WEATHER_FORECAST_CACHE_TTL:
+            return _weather_forecast_cache["data"]
 
     api_key = settings.OPENWEATHERMAP_API_KEY
     if api_key:
@@ -587,8 +619,9 @@ def _get_weather_forecast() -> Optional[list[dict]]:
                 for f in forecast
             ]
 
-            _weather_forecast_cache["data"] = forecast
-            _weather_forecast_cache["timestamp"] = now
+            with _cache_lock:
+                _weather_forecast_cache["data"] = forecast
+                _weather_forecast_cache["timestamp"] = now
             logger.info("OpenWeatherMap 预报已更新: %d 天", len(forecast))
             return forecast
         except Exception as e:
@@ -597,41 +630,33 @@ def _get_weather_forecast() -> Optional[list[dict]]:
     # fallback: wttr.in
     result = _get_forecast_from_wttr()
     if result:
-        _weather_forecast_cache["data"] = result
-        _weather_forecast_cache["timestamp"] = now
+        with _cache_lock:
+            _weather_forecast_cache["data"] = result
+            _weather_forecast_cache["timestamp"] = now
     return result or _weather_forecast_cache["data"]
 
 
 def _get_daily_background() -> Optional[str]:
     """
-    获取 Bing 每日壁纸 URL，每小时轮转不同图片
+    获取 Bing 每日壁纸 URL，复用 _fetch_bing_images 的缓存避免重复 API 调用
     缓存 1 小时
     """
-    now = time.time()
-    if _background_cache["data"] and (now - _background_cache["timestamp"]) < BACKGROUND_CACHE_TTL:
-        return _background_cache["data"]
+    with _cache_lock:
+        now = time.time()
+        if _background_cache["data"] and (now - _background_cache["timestamp"]) < BACKGROUND_CACHE_TTL:
+            return _background_cache["data"]
 
-    try:
-        # 获取 8 张壁纸，按小时轮转
-        url = "https://www.bing.com/HPImageArchive.aspx?format=js&idx=0&n=8&mkt=zh-CN"
-        resp = requests.get(url, headers={"User-Agent": "mars-sandbox/1.0"}, timeout=20)
-        resp.raise_for_status()
-        data = resp.json()
-
-        images = data.get("images")
-        if images:
-            hour_idx = datetime.now().hour % len(images)
-            img = images[hour_idx]
-            bg_url = f"https://www.bing.com{img['url']}"
+    # 复用 _fetch_bing_images 的图片列表缓存（4h TTL）
+    images = _fetch_bing_images()
+    if images:
+        hour_idx = datetime.now().hour % len(images)
+        bg_url = images[hour_idx]
+        with _cache_lock:
             _background_cache["data"] = bg_url
-            _background_cache["timestamp"] = now
-            logger.info("Bing 壁纸已更新 (hour=%d): %s", hour_idx, img.get("title", ""))
-            return bg_url
-    except Exception as e:
-        logger.error("获取 Bing 壁纸失败: %s", e)
-        return _background_cache["data"]
-
-    return None
+            _background_cache["timestamp"] = time.time()
+        logger.info("Bing 壁纸已更新 (hour=%d)", hour_idx)
+        return bg_url
+    return _background_cache["data"]
 
 
 def _fetch_bing_images() -> Optional[list[str]]:
@@ -662,8 +687,6 @@ def _fetch_bing_images() -> Optional[list[str]]:
 
 async def refresh_wallpaper_and_broadcast() -> Optional[str]:
     """清除壁纸缓存，随机选取一张不同于当前的壁纸，并广播给所有 dashboard 连接"""
-    global _background_cache
-
     images = await asyncio.to_thread(_fetch_bing_images)
     if not images:
         return None
@@ -678,7 +701,9 @@ async def refresh_wallpaper_and_broadcast() -> Optional[str]:
     new_bg = random.choice(candidates)
 
     # 更新壁纸缓存（防止短时间内再次触发获取）
-    _background_cache = {"data": new_bg, "timestamp": time.time()}
+    with _cache_lock:
+        _background_cache["data"] = new_bg
+        _background_cache["timestamp"] = time.time()
 
     await broadcast_to_dashboards({
         "type": "wallpaper_updated",
@@ -701,27 +726,28 @@ def _get_db_dashboard_data(db) -> dict:
 
 
 async def build_full_dashboard_data() -> dict:
-    """构建完整的看板数据（异步并发获取外部 API，避免阻塞事件循环）"""
-    db = SessionLocal()
-    try:
-        # 数据库查询（同步但很快）
-        db_data = _get_db_dashboard_data(db)
+    """构建完整的看板数据（异步并发获取外部 API，DB 查询也移到线程池避免阻塞事件循环）"""
+    def _db_work():
+        db = SessionLocal()
+        try:
+            return _get_db_dashboard_data(db)
+        finally:
+            db.close()
 
-        # 外部 API 并发请求（天气、预报、壁纸）
-        weather, forecast, bg = await asyncio.gather(
-            asyncio.to_thread(_get_weather),
-            asyncio.to_thread(_get_weather_forecast),
-            asyncio.to_thread(_get_daily_background),
-        )
+    # DB 查询与外部 API 并发执行
+    db_data, weather, forecast, bg = await asyncio.gather(
+        asyncio.to_thread(_db_work),
+        asyncio.to_thread(_get_weather),
+        asyncio.to_thread(_get_weather_forecast),
+        asyncio.to_thread(_get_daily_background),
+    )
 
-        return {
-            **db_data,
-            "weather": weather,
-            "weather_forecast": forecast,
-            "background_image": bg,
-        }
-    finally:
-        db.close()
+    return {
+        **db_data,
+        "weather": weather,
+        "weather_forecast": forecast,
+        "background_image": bg,
+    }
 
 
 async def _handle_acknowledge_message(message_id, member_id, ws: WebSocket):
@@ -764,6 +790,7 @@ async def _handle_acknowledge_message(message_id, member_id, ws: WebSocket):
             "acknowledged_by": acknowledged,
         })
     except Exception as e:
+        db.rollback()
         logger.error("处理留言确认失败: %s", e, exc_info=True)
     finally:
         db.close()
@@ -786,8 +813,9 @@ async def handle_dashboard_websocket(websocket: WebSocket):
             "timestamp": datetime.now().isoformat(),
             "data": data,
         }
-        await websocket.send_json(msg)
+        await websocket.send_text(json.dumps(msg, ensure_ascii=False, default=str))
 
+    refresh_task: Optional[asyncio.Task] = None
     try:
         # 首次推送全量数据
         await send_full_update()
@@ -811,7 +839,7 @@ async def handle_dashboard_websocket(websocket: WebSocket):
                 msg_type = msg.get("type")
 
                 if msg_type == "ping":
-                    await websocket.send_json({"type": "pong"})
+                    await websocket.send_text(json.dumps({"type": "pong"}))
                 elif msg_type == "refresh":
                     await send_full_update()
                 elif msg_type == "acknowledge_message":
@@ -832,9 +860,13 @@ async def handle_dashboard_websocket(websocket: WebSocket):
                 logger.error("Dashboard WS 处理异常: %s", e, exc_info=True)
                 break
 
-        refresh_task.cancel()
-
     except Exception as e:
         logger.error("Dashboard WS 异常: %s", e, exc_info=True)
     finally:
+        if refresh_task:
+            refresh_task.cancel()
+            try:
+                await refresh_task
+            except asyncio.CancelledError:
+                pass
         await unregister_dashboard(websocket)
