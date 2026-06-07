@@ -33,12 +33,26 @@ _weather_cache: dict = {"data": None, "timestamp": 0}
 _weather_forecast_cache: dict = {"data": None, "timestamp": 0}
 _background_cache: dict = {"data": None, "timestamp": 0}
 _bing_images_cache: dict = {"data": None, "timestamp": 0}  # 缓存 Bing 8张图片 URL 列表
+_pexels_images_cache: dict = {"data": None, "timestamp": 0}  # 缓存 Pexels 随机壁纸 URL 列表
 _cache_lock = threading.Lock()  # 保护缓存 dict 的跨线程读写
 
 WEATHER_CACHE_TTL = 30 * 60  # 30分钟
 WEATHER_FORECAST_CACHE_TTL = 60 * 60  # 1小时
 BACKGROUND_CACHE_TTL = 60 * 60  # 1小时
 BING_IMAGES_CACHE_TTL = 4 * 60 * 60  # 4小时
+PEXELS_IMAGES_CACHE_TTL = 2 * 60 * 60  # 2小时
+
+# Pexels 壁纸搜索关键词（轮换使用，增加多样性）
+_PEXELS_QUERIES = [
+    "nature landscape wallpaper",
+    "mountain scenery",
+    "ocean sunset",
+    "forest morning",
+    "sky clouds beautiful",
+    "lake reflection",
+    "aurora night sky",
+    "flower garden spring",
+]
 
 
 async def register_dashboard(ws: WebSocket):
@@ -638,7 +652,7 @@ def _get_weather_forecast() -> Optional[list[dict]]:
 
 def _get_daily_background() -> Optional[str]:
     """
-    获取 Bing 每日壁纸 URL，复用 _fetch_bing_images 的缓存避免重复 API 调用
+    获取每日壁纸 URL，优先从 Bing + Pexels 合并壁纸池中随机选取
     缓存 1 小时
     """
     with _cache_lock:
@@ -646,15 +660,14 @@ def _get_daily_background() -> Optional[str]:
         if _background_cache["data"] and (now - _background_cache["timestamp"]) < BACKGROUND_CACHE_TTL:
             return _background_cache["data"]
 
-    # 复用 _fetch_bing_images 的图片列表缓存（4h TTL）
-    images = _fetch_bing_images()
+    # 合并所有壁纸源
+    images = _fetch_all_wallpaper_sources()
     if images:
-        hour_idx = datetime.now().hour % len(images)
-        bg_url = images[hour_idx]
+        bg_url = random.choice(images)
         with _cache_lock:
             _background_cache["data"] = bg_url
             _background_cache["timestamp"] = time.time()
-        logger.info("Bing 壁纸已更新 (hour=%d)", hour_idx)
+        logger.info("壁纸已更新 (pool=%d)", len(images))
         return bg_url
     return _background_cache["data"]
 
@@ -685,9 +698,81 @@ def _fetch_bing_images() -> Optional[list[str]]:
     return None
 
 
+def _fetch_pexels_images() -> Optional[list[str]]:
+    """从 Pexels 获取随机高质量横版壁纸，缓存 2 小时。
+
+    每次随机选一个搜索关键词，获取 15 张横版大图，
+    返回可直接用作壁纸的图片 URL 列表。
+    """
+    api_key = settings.PEXELS_API_KEY
+    if not api_key:
+        return None
+
+    now = time.time()
+    if _pexels_images_cache["data"] and (now - _pexels_images_cache["timestamp"]) < PEXELS_IMAGES_CACHE_TTL:
+        return _pexels_images_cache["data"]
+
+    query = random.choice(_PEXELS_QUERIES)
+    try:
+        url = "https://api.pexels.com/v1/search"
+        params = {
+            "query": query,
+            "per_page": 15,
+            "orientation": "landscape",
+            "size": "large",
+            "page": random.randint(1, 5),  # 随机翻页增加多样性
+        }
+        resp = requests.get(
+            url, params=params,
+            headers={"Authorization": api_key, "User-Agent": "mars-sandbox/1.0"},
+            timeout=20,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+        photos = data.get("photos", [])
+        if photos:
+            # 优先使用 large2048（2048px 宽），回退到 large
+            urls = []
+            for photo in photos:
+                src = photo.get("src", {})
+                img_url = src.get("large2048") or src.get("large") or src.get("original")
+                if img_url:
+                    urls.append(img_url)
+            if urls:
+                _pexels_images_cache["data"] = urls
+                _pexels_images_cache["timestamp"] = now
+                logger.info("Pexels 壁纸已更新: %d 张 (query=%s, page=%s)", len(urls), query, params["page"])
+                return urls
+    except Exception as e:
+        logger.error("获取 Pexels 壁纸失败: %s", e)
+        return _pexels_images_cache["data"]
+
+    return None
+
+
+def _fetch_all_wallpaper_sources() -> list[str]:
+    """合并所有壁纸源（Bing + Pexels），返回去重后的 URL 列表"""
+    all_urls: list[str] = []
+    seen: set[str] = set()
+
+    for fetcher in (_fetch_bing_images, _fetch_pexels_images):
+        try:
+            images = fetcher()
+            if images:
+                for url in images:
+                    if url not in seen:
+                        seen.add(url)
+                        all_urls.append(url)
+        except Exception as e:
+            logger.warning("壁纸源获取异常: %s", e)
+
+    return all_urls
+
+
 async def refresh_wallpaper_and_broadcast() -> Optional[str]:
-    """清除壁纸缓存，随机选取一张不同于当前的壁纸，并广播给所有 dashboard 连接"""
-    images = await asyncio.to_thread(_fetch_bing_images)
+    """清除壁纸缓存，从 Bing + Pexels 合并壁纸池中随机选取一张不同于当前的壁纸，并广播"""
+    images = await asyncio.to_thread(_fetch_all_wallpaper_sources)
     if not images:
         return None
 
@@ -710,7 +795,7 @@ async def refresh_wallpaper_and_broadcast() -> Optional[str]:
         "timestamp": datetime.now().isoformat(),
         "data": {"background_image": new_bg},
     })
-    logger.info("壁纸已刷新并广播给 %d 个 dashboard 连接", len(_dashboard_connections))
+    logger.info("壁纸已刷新并广播给 %d 个 dashboard 连接 (壁纸池: %d 张)", len(_dashboard_connections), len(images))
     return new_bg
 
 
@@ -820,10 +905,10 @@ async def handle_dashboard_websocket(websocket: WebSocket):
         # 首次推送全量数据
         await send_full_update()
 
-        # 启动定时刷新任务
+        # 启动定时刷新任务（5分钟一次，用于天气/壁纸缓存过期后刷新）
         async def periodic_refresh():
             while True:
-                await asyncio.sleep(30)
+                await asyncio.sleep(300)
                 try:
                     await send_full_update()
                 except Exception:

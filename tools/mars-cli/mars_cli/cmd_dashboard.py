@@ -17,8 +17,8 @@ def _out(data):
 def refresh_wallpaper():
     """刷新 Dashboard 壁纸并推送到所有已连接的看板。
 
-    清除壁纸缓存，从 Bing 获取新壁纸，通过 WebSocket 实时推送到所有
-    已连接的 Dashboard 前端页面。
+    清除壁纸缓存，从 Bing + Pexels 壁纸池中随机选取一张新壁纸，
+    通过 WebSocket 实时推送到所有已连接的 Dashboard 前端页面。
     """
     result = get_client().refresh_wallpaper()
     _out(result)

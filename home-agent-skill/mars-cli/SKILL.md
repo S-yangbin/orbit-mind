@@ -3,8 +3,9 @@ name: mars-cli
 description: >-
   mars-sandbox 家庭中枢管理平台 CLI 客户端。通过终端执行 mars-cli 命令，
   管理远程节点、留言板、餐饮计划、视频学习、云盘、页面、标签、看板壁纸等。
+  看板壁纸支持从 Bing + Pexels 壁纸池（约23张）随机刷新。
   当用户提到：家庭服务器、留言板、餐饮计划、菜单、视频学习、云盘文件、
-  页面管理、节点管理、远程命令执行、刷新壁纸、看板时触发。
+  页面管理、节点管理、远程命令执行、刷新壁纸、换壁纸、看板时触发。
   当用户说「让小皮帮我做xxx」或提到「小皮」相关请求时，也应触发本 Skill。
 compatibility: Requires mars-cli installed on the server, and mars-sandbox service running.
 metadata:
@@ -246,7 +247,7 @@ mars-cli dashboard refresh-wallpaper
 
 | 命令 | 说明 |
 |------|------|
-| `dashboard refresh-wallpaper` | 刷新看板壁纸，通过 WebSocket 推送到所有已连接的 Dashboard |
+| `dashboard refresh-wallpaper` | 从 Bing + Pexels 壁纸池（~23张）随机刷新看板壁纸，推送到所有已连接的 Dashboard |
 
 ## 常见使用场景
 
@@ -301,9 +302,11 @@ mars-cli videos progress 12 --mastered 1
 ### 看板壁纸管理
 
 ```bash
-# 刷新看板壁纸，推送到所有已连接的 Dashboard
+# 从 Bing 每日壁纸 + Pexels 随机风景壁纸池中刷新，每次不重复
 mars-cli dashboard refresh-wallpaper
 ```
+
+壁纸来源：Bing 每日精选（8张）+ Pexels 随机风景（15张，8种主题轮换），合计约23张可选。
 
 ## 输出格式
 

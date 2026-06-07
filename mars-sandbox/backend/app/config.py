@@ -91,6 +91,9 @@ class Settings:
     WEATHER_LON: str = os.getenv("WEATHER_LON", "120.30")
     WEATHER_CITY: str = os.getenv("WEATHER_CITY", "杭州")
 
+    # Wallpaper (Pexels — 随机壁纸补充源)
+    PEXELS_API_KEY: str = os.getenv("PEXELS_API_KEY", "")
+
     # External tool paths (auto-detected, can override via env)
     @property
     def FFMPEG_PATH(self) -> str:

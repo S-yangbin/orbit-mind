@@ -47,11 +47,10 @@ export function useDashboardWs(): UseDashboardWsReturn {
 
         switch (msg.type) {
           case "dashboard_update":
-            // 全量数据更新
+            // 全量数据更新（周期性刷新，不唤醒屏保）
             if (msg.data) {
               setData(msg.data);
               setLastUpdate(msg.timestamp || new Date().toISOString());
-              setContentVersion((v) => v + 1);
             }
             break;
 
