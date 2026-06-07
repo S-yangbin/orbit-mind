@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, memo, useCallback } from "react";
+import { useState, useEffect, useRef, useMemo, memo, useCallback } from "react";
 import { Spin, Typography, Tag, Image, Modal } from "antd";
 import {
   WifiOutlined,
@@ -46,6 +46,9 @@ const MEAL_TYPE_CONFIG: Record<string, { label: string; color: string }> = {
 };
 
 const WEEKDAY_NAMES = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
+
+/** 屏保空闲超时（毫秒）：无操作 5 分钟后隐藏内容仅展示壁纸 */
+const SCREENSAVER_IDLE_MS = 5 * 60 * 1000;
 
 function formatWeekendDate(dateStr: string): string {
   const d = new Date(dateStr);
@@ -109,11 +112,46 @@ const TRAVEL_GRADIENTS = [
 
 
 export function Dashboard() {
-  const { data, isConnected, familyMembers, acknowledgeMessage } = useDashboardWs();
+  const { data, isConnected, familyMembers, acknowledgeMessage, contentVersion } = useDashboardWs();
   const [now, setNow] = useState(new Date());
   const [selectedTravelPage, setSelectedTravelPage] = useState<DashboardTravelPage | null>(null);
   const [dailyQuote, setDailyQuote] = useState<string>(pickByDate(BUILT_IN_QUOTES));
   const quoteIcon = useMemo(() => pickByDate(QUOTE_ICONS), []);
+
+  // ── 屏保模式 ──
+  const [screensaver, setScreensaver] = useState(false);
+  const idleTimerRef = useRef<ReturnType<typeof setTimeout>>();
+
+  // 启动/重置空闲计时器
+  const resetIdleTimer = useCallback(() => {
+    if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    idleTimerRef.current = setTimeout(() => setScreensaver(true), SCREENSAVER_IDLE_MS);
+  }, []);
+
+  // 用户交互（点击/触摸）唤醒屏保
+  useEffect(() => {
+    const handleInteraction = () => {
+      setScreensaver(false);
+      resetIdleTimer();
+    };
+    document.addEventListener("click", handleInteraction);
+    document.addEventListener("touchstart", handleInteraction);
+    // 启动初始计时器
+    resetIdleTimer();
+    return () => {
+      document.removeEventListener("click", handleInteraction);
+      document.removeEventListener("touchstart", handleInteraction);
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    };
+  }, [resetIdleTimer]);
+
+  // 非壁纸内容更新时唤醒屏保并重置计时器
+  useEffect(() => {
+    if (contentVersion > 0) {
+      setScreensaver(false);
+      resetIdleTimer();
+    }
+  }, [contentVersion, resetIdleTimer]);
 
   // 每分钟刷新（用于夜间模式判断）
   useEffect(() => {
@@ -272,19 +310,22 @@ export function Dashboard() {
         transition: "background 1s ease",
       }} />
 
-      {/* 宠物猫狗 */}
-      <DashboardPets />
+      {/* 宠物猫狗（屏保时隐藏，省电） */}
+      {!screensaver && <DashboardPets />}
 
-      {/* 蝴蝶飞舞 */}
-      <DashboardButterflies />
+      {/* 蝴蝶飞舞（屏保时隐藏，省电） */}
+      {!screensaver && <DashboardButterflies />}
 
-      {/* 内容层 */}
+      {/* 内容层（屏保时渐隐） */}
       <div style={{
         position: "relative",
         zIndex: 2,
         height: "100vh",
         display: "flex",
         flexDirection: "column",
+        opacity: screensaver ? 0 : 1,
+        transition: "opacity 1s ease",
+        pointerEvents: screensaver ? "none" : "auto",
       }}>
         {/* Header - 固定不动 */}
         <div style={{

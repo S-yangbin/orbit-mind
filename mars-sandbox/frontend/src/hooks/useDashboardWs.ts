@@ -7,6 +7,8 @@ interface UseDashboardWsReturn {
   lastUpdate: string | null;
   familyMembers: DashboardFamilyMember[];
   acknowledgeMessage: (messageId: number, memberId: number) => void;
+  /** 非壁纸内容更新版本，每次变化可用于唤醒屏保 */
+  contentVersion: number;
 }
 
 /**
@@ -19,6 +21,7 @@ export function useDashboardWs(): UseDashboardWsReturn {
   const [data, setData] = useState<DashboardData | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<string | null>(null);
+  const [contentVersion, setContentVersion] = useState(0);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
   const reconnectDelayRef = useRef(1000); // 初始重连延迟 1s
@@ -48,6 +51,7 @@ export function useDashboardWs(): UseDashboardWsReturn {
             if (msg.data) {
               setData(msg.data);
               setLastUpdate(msg.timestamp || new Date().toISOString());
+              setContentVersion((v) => v + 1);
             }
             break;
 
@@ -65,6 +69,7 @@ export function useDashboardWs(): UseDashboardWsReturn {
                   messages: [msg.message as BoardMessage, ...prev.messages],
                 };
               });
+              setContentVersion((v) => v + 1);
             }
             break;
 
@@ -79,6 +84,7 @@ export function useDashboardWs(): UseDashboardWsReturn {
                   messages: prev.messages.filter((m) => m.id !== deletedId),
                 };
               });
+              setContentVersion((v) => v + 1);
             }
             break;
 
@@ -95,6 +101,7 @@ export function useDashboardWs(): UseDashboardWsReturn {
                   ),
                 };
               });
+              setContentVersion((v) => v + 1);
             }
             break;
 
@@ -114,6 +121,7 @@ export function useDashboardWs(): UseDashboardWsReturn {
                 });
                 return { ...prev, messages: newMessages };
               });
+              setContentVersion((v) => v + 1);
             }
             break;
 
@@ -131,6 +139,7 @@ export function useDashboardWs(): UseDashboardWsReturn {
                   ),
                 };
               });
+              setContentVersion((v) => v + 1);
             }
             break;
 
@@ -153,6 +162,7 @@ export function useDashboardWs(): UseDashboardWsReturn {
                 if (!prev) return prev;
                 return { ...prev, meal_plans: newMealPlans };
               });
+              setContentVersion((v) => v + 1);
             }
             break;
 
@@ -218,5 +228,5 @@ export function useDashboardWs(): UseDashboardWsReturn {
   // 家庭成员列表
   const familyMembers = data?.family_members ?? [];
 
-  return { data, isConnected, lastUpdate, familyMembers, acknowledgeMessage };
+  return { data, isConnected, lastUpdate, familyMembers, acknowledgeMessage, contentVersion };
 }
