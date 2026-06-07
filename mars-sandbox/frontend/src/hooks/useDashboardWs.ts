@@ -145,6 +145,17 @@ export function useDashboardWs(): UseDashboardWsReturn {
             }
             break;
 
+          case "meal_plan_updated":
+            // 菜单已更新
+            if (msg.data?.meal_plans) {
+              const newMealPlans = msg.data.meal_plans;
+              setData((prev) => {
+                if (!prev) return prev;
+                return { ...prev, meal_plans: newMealPlans };
+              });
+            }
+            break;
+
           case "pong":
             // 心跳响应，无需处理
             break;

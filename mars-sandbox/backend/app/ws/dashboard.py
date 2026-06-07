@@ -6,6 +6,7 @@ Dashboard WebSocket handler
 import asyncio
 import json
 import logging
+import random
 import time
 import requests
 from datetime import datetime, date, timedelta
@@ -25,14 +26,16 @@ logger = logging.getLogger(__name__)
 _dashboard_connections: Set[WebSocket] = set()
 _lock = asyncio.Lock()
 
-# 缓存：天气（30分钟）、壁纸（1小时）
+# 缓存：天气（30分钟）、壁纸（1小时）、Bing 图片列表（4小时）
 _weather_cache: dict = {"data": None, "timestamp": 0}
 _weather_forecast_cache: dict = {"data": None, "timestamp": 0}
 _background_cache: dict = {"data": None, "timestamp": 0}
+_bing_images_cache: dict = {"data": None, "timestamp": 0}  # 缓存 Bing 8张图片 URL 列表
 
 WEATHER_CACHE_TTL = 30 * 60  # 30分钟
 WEATHER_FORECAST_CACHE_TTL = 60 * 60  # 1小时
 BACKGROUND_CACHE_TTL = 60 * 60  # 1小时
+BING_IMAGES_CACHE_TTL = 4 * 60 * 60  # 4小时
 
 
 async def register_dashboard(ws: WebSocket):
@@ -631,14 +634,51 @@ def _get_daily_background() -> Optional[str]:
     return None
 
 
-async def refresh_wallpaper_and_broadcast() -> Optional[str]:
-    """清除壁纸缓存，获取新壁纸，并广播给所有 dashboard 连接"""
-    global _background_cache
-    _background_cache = {"data": None, "timestamp": 0}
+def _fetch_bing_images() -> Optional[list[str]]:
+    """获取 Bing 每日壁纸 URL 列表（8张），缓存 4 小时"""
+    now = time.time()
+    if _bing_images_cache["data"] and (now - _bing_images_cache["timestamp"]) < BING_IMAGES_CACHE_TTL:
+        return _bing_images_cache["data"]
 
-    new_bg = await asyncio.to_thread(_get_daily_background)
-    if not new_bg:
+    try:
+        url = "https://www.bing.com/HPImageArchive.aspx?format=js&idx=0&n=8&mkt=zh-CN"
+        resp = requests.get(url, headers={"User-Agent": "mars-sandbox/1.0"}, timeout=20)
+        resp.raise_for_status()
+        data = resp.json()
+
+        images = data.get("images")
+        if images:
+            urls = [f"https://www.bing.com{img['url']}" for img in images]
+            _bing_images_cache["data"] = urls
+            _bing_images_cache["timestamp"] = now
+            logger.info("Bing 图片列表已更新: %d 张", len(urls))
+            return urls
+    except Exception as e:
+        logger.error("获取 Bing 图片列表失败: %s", e)
+        return _bing_images_cache["data"]
+
+    return None
+
+
+async def refresh_wallpaper_and_broadcast() -> Optional[str]:
+    """清除壁纸缓存，随机选取一张不同于当前的壁纸，并广播给所有 dashboard 连接"""
+    global _background_cache
+
+    images = await asyncio.to_thread(_fetch_bing_images)
+    if not images:
         return None
+
+    current_bg = _background_cache.get("data")
+
+    # 从候选图片中排除当前壁纸，随机选一张新的
+    candidates = [img for img in images if img != current_bg]
+    if not candidates:
+        candidates = images  # 全部相同则直接选
+
+    new_bg = random.choice(candidates)
+
+    # 更新壁纸缓存（防止短时间内再次触发获取）
+    _background_cache = {"data": new_bg, "timestamp": time.time()}
 
     await broadcast_to_dashboards({
         "type": "wallpaper_updated",

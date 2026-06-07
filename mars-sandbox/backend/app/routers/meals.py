@@ -27,8 +27,23 @@ from ..schemas import (
     MealHistoryStatsResponse, DishPreferenceResponse, MemberPreferenceSummary, DishLikedByResponse,
 )
 from ..services.ai_service import recognize_dishes, generate_monthly_weekend_plan
+from ..ws.dashboard import broadcast_to_dashboards, _get_meal_plans
 
 logger = logging.getLogger(__name__)
+
+
+async def _broadcast_meal_plan_update(db: Session):
+    """菜单变更后，重新查询菜单数据并广播到所有 Dashboard"""
+    try:
+        meal_plans = _get_meal_plans(db)
+        await broadcast_to_dashboards({
+            "type": "meal_plan_updated",
+            "data": {"meal_plans": meal_plans},
+        })
+        logger.info("菜单变更已广播到 Dashboard")
+    except Exception as e:
+        logger.error("广播菜单更新失败: %s", e, exc_info=True)
+
 
 router = APIRouter(prefix="/api/meals", tags=["meals"])
 
@@ -603,6 +618,9 @@ async def generate_plan(
 
     db.commit()
 
+    # 广播菜单更新到 Dashboard
+    await _broadcast_meal_plan_update(db)
+
     # Return the first week's plan
     first_monday = start_date - timedelta(days=start_date.weekday())
     first_plan = plans_by_week.get(first_monday)
@@ -642,6 +660,7 @@ async def replace_plan_item(
     item.is_manual = 1
     db.commit()
     db.refresh(item)
+    await _broadcast_meal_plan_update(db)
     return _plan_item_to_response(item)
 
 
@@ -656,6 +675,7 @@ async def remove_plan_item(
         raise HTTPException(status_code=404, detail="Plan item not found")
     db.delete(item)
     db.commit()
+    await _broadcast_meal_plan_update(db)
     return {"status": "ok"}
 
 
@@ -694,6 +714,7 @@ async def add_plan_item(
     db.add(item)
     db.commit()
     db.refresh(item)
+    await _broadcast_meal_plan_update(db)
     return _plan_item_to_response(item)
 
 
@@ -708,6 +729,7 @@ async def confirm_plan(
         raise HTTPException(status_code=404, detail="No plan for current week")
     plan.status = "confirmed"
     db.commit()
+    await _broadcast_meal_plan_update(db)
     return {"status": "ok", "week_start_date": str(week_start)}
 
 
