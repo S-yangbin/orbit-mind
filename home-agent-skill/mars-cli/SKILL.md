@@ -2,9 +2,10 @@
 name: mars-cli
 description: >-
   mars-sandbox 家庭中枢管理平台 CLI 客户端。通过终端执行 mars-cli 命令，
-  管理远程节点、留言板、餐饮计划、视频学习、云盘、页面、标签等。
+  管理远程节点、留言板、餐饮计划、视频学习、云盘、页面、标签、看板壁纸等。
   当用户提到：家庭服务器、留言板、餐饮计划、菜单、视频学习、云盘文件、
-  页面管理、节点管理、远程命令执行时触发。
+  页面管理、节点管理、远程命令执行、刷新壁纸、看板时触发。
+  当用户说「让小皮帮我做xxx」或提到「小皮」相关请求时，也应触发本 Skill。
 compatibility: Requires mars-cli installed on the server, and mars-sandbox service running.
 metadata:
   author: orbit-mind
@@ -44,8 +45,9 @@ required_environment_variables:
 - 管理云盘文件
 - 管理页面和标签
 - 查看节点状态
+- 刷新看板壁纸
 
-触发关键词：家庭服务器、留言板、餐饮计划、菜单、吃什么、视频学习、云盘、页面管理、节点、远程命令
+触发关键词：家庭服务器、留言板、餐饮计划、菜单、吃什么、视频学习、云盘、页面管理、节点、远程命令、壁纸、看板
 
 ## 前提条件
 
@@ -97,6 +99,7 @@ mars-cli health
 | 页面管理 | `mars-cli pages` | 托管页面 CRUD | API Key |
 | 标签管理 | `mars-cli tags` | 标签 CRUD | API Key |
 | 扫描 | `mars-cli scan` | 页面目录扫描 | API Key |
+| 看板 | `mars-cli dashboard` | 壁纸刷新等看板管理 | Cookie（自动登录）/ API Key |
 
 ## 命令参考
 
@@ -235,6 +238,16 @@ mars-cli scan trigger
 mars-cli scan status
 ```
 
+### 看板 (`dashboard`)
+
+```bash
+mars-cli dashboard refresh-wallpaper
+```
+
+| 命令 | 说明 |
+|------|------|
+| `dashboard refresh-wallpaper` | 刷新看板壁纸，通过 WebSocket 推送到所有已连接的 Dashboard |
+
 ## 常见使用场景
 
 ### 查看家庭服务器状态
@@ -283,6 +296,13 @@ mars-cli videos get 1
 mars-cli videos process 1
 mars-cli videos note 12 '## 关键要点\n- 要点1\n- 要点2'
 mars-cli videos progress 12 --mastered 1
+```
+
+### 看板壁纸管理
+
+```bash
+# 刷新看板壁纸，推送到所有已连接的 Dashboard
+mars-cli dashboard refresh-wallpaper
 ```
 
 ## 输出格式

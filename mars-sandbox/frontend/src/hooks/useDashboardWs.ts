@@ -134,6 +134,17 @@ export function useDashboardWs(): UseDashboardWsReturn {
             }
             break;
 
+          case "wallpaper_updated":
+            // 壁纸已刷新
+            if (msg.data?.background_image) {
+              const newBg = msg.data.background_image;
+              setData((prev) => {
+                if (!prev) return prev;
+                return { ...prev, background_image: newBg };
+              });
+            }
+            break;
+
           case "pong":
             // 心跳响应，无需处理
             break;

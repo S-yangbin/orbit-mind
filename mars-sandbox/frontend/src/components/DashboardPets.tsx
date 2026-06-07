@@ -396,6 +396,9 @@ export function DashboardPets() {
   dogRef.current = dog;
   catRef.current = cat;
 
+  const updateBehaviorRef = useRef<(...args: any[]) => void>(() => {});
+  const kickBallRef = useRef<(...args: any[]) => void>(() => {});
+
   const dogTarget = useRef<{ x: number; y: number } | null>(null);
   const catTarget = useRef<{ x: number; y: number } | null>(null);
 
@@ -427,8 +430,8 @@ export function DashboardPets() {
     const schedule = () => {
       const delay = 3000 + Math.random() * 5000;
       timeout = setTimeout(() => {
-        updateBehavior("dog");
-        updateBehavior("cat");
+        updateBehaviorRef.current("dog");
+        updateBehaviorRef.current("cat");
         schedule();
       }, delay);
     };
@@ -677,16 +680,15 @@ export function DashboardPets() {
 
       if (ballActive) {
         const b = ballPosRef.current;
-        const posRef = kind === "dog" ? dogPos : catRef;
         const petPos = kind === "dog" ? dogPos.current : catPos.current;
         const dxb = b.x - petPos.x;
         const dyb = b.y - petPos.y;
         const distBall = Math.sqrt(dxb * dxb + dyb * dyb);
         if (distBall < PET_CHASE_BALL_DISTANCE) {
-          if (distBall < 4) kickBall(kind);
+          if (distBall < 4) kickBallRef.current(kind);
           target.current = { x: b.x, y: b.y };
-          const posRef = kind === "dog" ? dogPos : catPos;
-          setter((p) => ({ ...p, action: "run", flipX: (target.current?.x ?? posRef.current.x) < posRef.current.x }));
+          const pRef = kind === "dog" ? dogPos : catPos;
+          setter((p) => ({ ...p, action: "run", flipX: (target.current?.x ?? pRef.current.x) < pRef.current.x }));
           return;
         }
       }
@@ -726,8 +728,12 @@ export function DashboardPets() {
         setter((p) => ({ ...p, action: "idle" }));
       }
     },
-    [ballActive, kickBall],
+    [ballActive, kickBallRef],
   );
+
+  // 同步最新函数到 ref，供 setTimeout 闭包使用
+  updateBehaviorRef.current = updateBehavior;
+  kickBallRef.current = kickBall;
 
   /* ── 点击互动 ── */
   const handleClick = useCallback(

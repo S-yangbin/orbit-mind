@@ -631,6 +631,24 @@ def _get_daily_background() -> Optional[str]:
     return None
 
 
+async def refresh_wallpaper_and_broadcast() -> Optional[str]:
+    """清除壁纸缓存，获取新壁纸，并广播给所有 dashboard 连接"""
+    global _background_cache
+    _background_cache = {"data": None, "timestamp": 0}
+
+    new_bg = await asyncio.to_thread(_get_daily_background)
+    if not new_bg:
+        return None
+
+    await broadcast_to_dashboards({
+        "type": "wallpaper_updated",
+        "timestamp": datetime.now().isoformat(),
+        "data": {"background_image": new_bg},
+    })
+    logger.info("壁纸已刷新并广播给 %d 个 dashboard 连接", len(_dashboard_connections))
+    return new_bg
+
+
 def _get_db_dashboard_data(db) -> dict:
     """获取数据库相关的看板数据（同步，本地查询很快）"""
     return {

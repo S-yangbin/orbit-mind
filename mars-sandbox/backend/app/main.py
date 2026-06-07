@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from .config import settings
 from .database import init_db, SessionLocal, engine
 from .auth import get_current_user
-from .routers import auth, pages, tags, scan, nodes, commands, videos, meals, drive, board
+from .routers import auth, pages, tags, scan, nodes, commands, videos, meals, drive, board, dashboard
 from .scanner import scan_directories
 from .ws.router import router as ws_router
 
@@ -150,6 +150,7 @@ app.include_router(videos.router)
 app.include_router(meals.router)
 app.include_router(drive.router)
 app.include_router(board.router)
+app.include_router(dashboard.router)
 app.include_router(ws_router)  # WebSocket路由
 
 

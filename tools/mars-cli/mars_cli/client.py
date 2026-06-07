@@ -651,3 +651,11 @@ class MarsClient:
         """GET /api/scan/status — 获取扫描状态。"""
         resp = self.session.get(self._url("/api/scan/status"), timeout=15)
         return self._handle_response(resp)
+
+    # ─── Dashboard ─────────────────────────────────────────────────────────
+
+    def refresh_wallpaper(self) -> Dict[str, Any]:
+        """POST /api/dashboard/refresh-wallpaper — 刷新看板壁纸并推送给所有已连接 Dashboard。"""
+        self._ensure_auth()
+        resp = self.session.post(self._url("/api/dashboard/refresh-wallpaper"), timeout=30)
+        return self._handle_response(resp)
