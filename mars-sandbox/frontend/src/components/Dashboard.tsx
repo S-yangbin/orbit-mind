@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, memo, useCallback } from "react";
 import { Spin, Typography, Tag, Image, Modal } from "antd";
 import {
   WifiOutlined,
@@ -10,6 +10,7 @@ import {
   CheckCircleFilled,
 } from "@ant-design/icons";
 import { DashboardPets } from "./DashboardPets";
+import { DashboardButterflies } from "./DashboardButterflies";
 import { useDashboardWs } from "../hooks/useDashboardWs";
 import { resolveColor, formatBoardDateTime, mealPhotoToUrl } from "../utils";
 import type {
@@ -274,6 +275,9 @@ export function Dashboard() {
       {/* 宠物猫狗 */}
       <DashboardPets />
 
+      {/* 蝴蝶飞舞 */}
+      <DashboardButterflies />
+
       {/* 内容层 */}
       <div style={{
         position: "relative",
@@ -316,8 +320,7 @@ export function Dashboard() {
                 display: "flex",
                 alignItems: "center",
                 gap: 16,
-                background: "rgba(255,255,255,0.15)",
-                backdropFilter: "blur(12px)",
+                background: "rgba(255,255,255,0.18)",
                 borderRadius: 16,
                 padding: "8px 20px",
               }}>
@@ -340,6 +343,19 @@ export function Dashboard() {
                     <div style={{ fontSize: 14, color: "rgba(255,255,255,0.8)" }}>
                       {weather.description}
                     </div>
+                    {weather.city && (
+                      <div style={{
+                        fontSize: 12,
+                        color: "rgba(255,255,255,0.65)",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 3,
+                        marginTop: 2,
+                      }}>
+                        <EnvironmentOutlined style={{ fontSize: 11 }} />
+                        {weather.city}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -679,162 +695,11 @@ export function Dashboard() {
           </div>
 
             {/* 留言板 */}
-            <div style={{
-              borderRadius: 16,
-              padding: "16px 20px",
-            }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
-              <MessageOutlined style={{ fontSize: 22, color: "#fb923c" }} />
-              <Text strong style={{ fontSize: 20, color: "#fff", textShadow: "0 1px 4px rgba(0,0,0,0.3)" }}>家庭留言</Text>
-            </div>
-
-            {activeMessages.length === 0 ? (
-              <div style={{ textAlign: "center", color: "rgba(255,255,255,0.6)", padding: "40px 0", fontSize: 16 }}>
-                暂无留言
-              </div>
-            ) : (
-              activeMessages.map((msg: BoardMessage) => {
-                const authorName = msg.author || "匿名";
-                const initial = authorName.charAt(0).toUpperCase();
-                const avatarBg = getAvatarColor(authorName);
-                const isPinned = !!msg.pinned;
-
-                return (
-                  <div
-                    key={msg.id}
-                    style={{
-                      background: isPinned ? "#fffbeb" : "#fff",
-                      borderLeft: `4px solid ${resolveColor(msg.color)}`,
-                      borderRadius: 16,
-                      padding: isPinned ? "16px 18px" : "14px 16px",
-                      marginBottom: 12,
-                      boxShadow: isPinned
-                        ? "0 4px 16px rgba(0,0,0,0.1)"
-                        : "0 2px 8px rgba(0,0,0,0.05)",
-                      transition: "all 0.3s ease",
-                    }}
-                  >
-                    {/* 头部：头像 + 作者 */}
-                    <div style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 10,
-                      marginBottom: 10,
-                    }}>
-                      <div style={{
-                        width: isPinned ? 40 : 36,
-                        height: isPinned ? 40 : 36,
-                        borderRadius: "50%",
-                        background: avatarBg,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: isPinned ? 18 : 16,
-                        fontWeight: 600,
-                        color: "#fff",
-                        flexShrink: 0,
-                      }}>
-                        {initial}
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <span style={{
-                          fontSize: 15,
-                          fontWeight: 600,
-                          color: "#334155",
-                        }}>
-                          {authorName}
-                        </span>
-                        <span style={{ fontSize: 14, color: "#64748b", marginLeft: 6 }}>
-                          留言说
-                        </span>
-                      </div>
-                      {isPinned && (
-                        <PushpinOutlined style={{
-                          fontSize: 16,
-                          color: "#f59e0b",
-                        }} />
-                      )}
-                    </div>
-
-                    {/* 内容 */}
-                    <div style={{
-                      fontSize: 16,
-                      lineHeight: 1.6,
-                      color: "#1e293b",
-                      whiteSpace: "pre-wrap",
-                      wordBreak: "break-word",
-                      marginBottom: 10,
-                      paddingLeft: isPinned ? 50 : 46,
-                    }}>
-                      {msg.content}
-                    </div>
-
-                    {/* 底部时间 */}
-                    <div style={{
-                      fontSize: 12,
-                      color: "#94a3b8",
-                      paddingLeft: isPinned ? 50 : 46,
-                      marginBottom: 8,
-                    }}>
-                      {formatBoardDateTime(msg.created_at)}
-                      {msg.expires_at && (
-                        <span style={{ marginLeft: 12, opacity: 0.7 }}>
-                          有效期至 {new Date(msg.expires_at).toLocaleDateString("zh-CN")}
-                        </span>
-                      )}
-                    </div>
-
-                    {/* 家庭成员已读按钮 */}
-                    {familyMembers.length > 0 && (
-                      <div style={{
-                        display: "flex",
-                        flexWrap: "wrap",
-                        gap: 6,
-                        paddingLeft: isPinned ? 50 : 46,
-                      }}>
-                        {familyMembers.map((member) => {
-                          const isAcked = msg.acknowledged_by?.includes(member.id);
-                          return (
-                            <button
-                              key={member.id}
-                              onClick={() => acknowledgeMessage(msg.id, member.id)}
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 4,
-                                padding: "3px 10px",
-                                borderRadius: 12,
-                                border: isAcked
-                                  ? "1px solid #22c55e"
-                                  : "1px solid #e5e7eb",
-                                background: isAcked
-                                  ? "#dcfce7"
-                                  : "#f8fafc",
-                                color: isAcked
-                                  ? "#15803d"
-                                  : "#64748b",
-                                fontSize: 12,
-                                fontWeight: 500,
-                                cursor: "pointer",
-                                transition: "all 0.2s ease",
-                                lineHeight: 1,
-                              }}
-                            >
-                              <span style={{ fontSize: 14 }}>{member.avatar}</span>
-                              <span>{member.name}</span>
-                              {isAcked && (
-                                <CheckCircleFilled style={{ fontSize: 12, color: "#22c55e" }} />
-                              )}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                );
-              })
-            )}
-          </div>
+            <MessageSection
+              messages={activeMessages}
+              familyMembers={familyMembers}
+              acknowledgeMessage={acknowledgeMessage}
+            />
           </div>
         </div>
         </div>
@@ -868,3 +733,119 @@ export function Dashboard() {
     </div>
   );
 }
+
+/* ───────── memo：留言板 ───────── */
+const MessageSection = memo(function MessageSection({
+  messages,
+  familyMembers,
+  acknowledgeMessage,
+}: {
+  messages: BoardMessage[];
+  familyMembers: DashboardFamilyMember[];
+  acknowledgeMessage: (msgId: number, memberId: number) => void;
+}) {
+  return (
+    <div style={{ borderRadius: 16, padding: "16px 20px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+        <MessageOutlined style={{ fontSize: 22, color: "#fb923c" }} />
+        <Text strong style={{ fontSize: 20, color: "#fff", textShadow: "0 1px 4px rgba(0,0,0,0.3)" }}>家庭留言</Text>
+      </div>
+
+      {messages.length === 0 ? (
+        <div style={{ textAlign: "center", color: "rgba(255,255,255,0.6)", padding: "40px 0", fontSize: 16 }}>
+          暂无留言
+        </div>
+      ) : (
+        messages.map((msg: BoardMessage) => {
+          const authorName = msg.author || "匿名";
+          const initial = authorName.charAt(0).toUpperCase();
+          const avatarBg = getAvatarColor(authorName);
+          const isPinned = !!msg.pinned;
+
+          return (
+            <div
+              key={msg.id}
+              style={{
+                background: isPinned ? "#fffbeb" : "#fff",
+                borderLeft: `4px solid ${resolveColor(msg.color)}`,
+                borderRadius: 16,
+                padding: isPinned ? "16px 18px" : "14px 16px",
+                marginBottom: 12,
+                boxShadow: isPinned
+                  ? "0 4px 16px rgba(0,0,0,0.1)"
+                  : "0 2px 8px rgba(0,0,0,0.05)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                <div style={{
+                  width: isPinned ? 40 : 36,
+                  height: isPinned ? 40 : 36,
+                  borderRadius: "50%",
+                  background: avatarBg,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: isPinned ? 18 : 16,
+                  fontWeight: 600,
+                  color: "#fff",
+                  flexShrink: 0,
+                }}>
+                  {initial}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <span style={{ fontSize: 15, fontWeight: 600, color: "#334155" }}>{authorName}</span>
+                  <span style={{ fontSize: 14, color: "#64748b", marginLeft: 6 }}>留言说</span>
+                </div>
+                {isPinned && <PushpinOutlined style={{ fontSize: 16, color: "#f59e0b" }} />}
+              </div>
+
+              <div style={{
+                fontSize: 16, lineHeight: 1.6, color: "#1e293b",
+                whiteSpace: "pre-wrap", wordBreak: "break-word",
+                marginBottom: 10, paddingLeft: isPinned ? 50 : 46,
+              }}>
+                {msg.content}
+              </div>
+
+              <div style={{ fontSize: 12, color: "#94a3b8", paddingLeft: isPinned ? 50 : 46, marginBottom: 8 }}>
+                {formatBoardDateTime(msg.created_at)}
+                {msg.expires_at && (
+                  <span style={{ marginLeft: 12, opacity: 0.7 }}>
+                    有效期至 {new Date(msg.expires_at).toLocaleDateString("zh-CN")}
+                  </span>
+                )}
+              </div>
+
+              {familyMembers.length > 0 && (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, paddingLeft: isPinned ? 50 : 46 }}>
+                  {familyMembers.map((member) => {
+                    const isAcked = msg.acknowledged_by?.includes(member.id);
+                    return (
+                      <button
+                        key={member.id}
+                        onClick={() => acknowledgeMessage(msg.id, member.id)}
+                        style={{
+                          display: "flex", alignItems: "center", gap: 4,
+                          padding: "3px 10px", borderRadius: 12,
+                          border: isAcked ? "1px solid #22c55e" : "1px solid #e5e7eb",
+                          background: isAcked ? "#dcfce7" : "#f8fafc",
+                          color: isAcked ? "#15803d" : "#64748b",
+                          fontSize: 12, fontWeight: 500, cursor: "pointer",
+                          lineHeight: 1,
+                        }}
+                      >
+                        <span style={{ fontSize: 14 }}>{member.avatar}</span>
+                        <span>{member.name}</span>
+                        {isAcked && <CheckCircleFilled style={{ fontSize: 12, color: "#22c55e" }} />}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
+});

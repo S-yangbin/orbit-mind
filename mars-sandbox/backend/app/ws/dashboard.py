@@ -25,14 +25,14 @@ logger = logging.getLogger(__name__)
 _dashboard_connections: Set[WebSocket] = set()
 _lock = asyncio.Lock()
 
-# 缓存：天气（30分钟）、壁纸（24小时）
+# 缓存：天气（30分钟）、壁纸（1小时）
 _weather_cache: dict = {"data": None, "timestamp": 0}
 _weather_forecast_cache: dict = {"data": None, "timestamp": 0}
 _background_cache: dict = {"data": None, "timestamp": 0}
 
 WEATHER_CACHE_TTL = 30 * 60  # 30分钟
 WEATHER_FORECAST_CACHE_TTL = 60 * 60  # 1小时
-BACKGROUND_CACHE_TTL = 24 * 60 * 60  # 24小时
+BACKGROUND_CACHE_TTL = 60 * 60  # 1小时
 
 
 async def register_dashboard(ws: WebSocket):
@@ -601,26 +601,28 @@ def _get_weather_forecast() -> Optional[list[dict]]:
 
 def _get_daily_background() -> Optional[str]:
     """
-    获取 Bing 每日壁纸 URL
-    缓存 24 小时
+    获取 Bing 每日壁纸 URL，每小时轮转不同图片
+    缓存 1 小时
     """
     now = time.time()
     if _background_cache["data"] and (now - _background_cache["timestamp"]) < BACKGROUND_CACHE_TTL:
         return _background_cache["data"]
 
     try:
-        url = "https://www.bing.com/HPImageArchive.aspx?format=js&idx=0&n=1&mkt=zh-CN"
+        # 获取 8 张壁纸，按小时轮转
+        url = "https://www.bing.com/HPImageArchive.aspx?format=js&idx=0&n=8&mkt=zh-CN"
         resp = requests.get(url, headers={"User-Agent": "mars-sandbox/1.0"}, timeout=20)
         resp.raise_for_status()
         data = resp.json()
 
-        if data.get("images"):
-            img = data["images"][0]
-            # urlbase 需要拼接完整 URL
+        images = data.get("images")
+        if images:
+            hour_idx = datetime.now().hour % len(images)
+            img = images[hour_idx]
             bg_url = f"https://www.bing.com{img['url']}"
             _background_cache["data"] = bg_url
             _background_cache["timestamp"] = now
-            logger.info("Bing 壁纸已更新: %s", img.get("title", ""))
+            logger.info("Bing 壁纸已更新 (hour=%d): %s", hour_idx, img.get("title", ""))
             return bg_url
     except Exception as e:
         logger.error("获取 Bing 壁纸失败: %s", e)
@@ -629,19 +631,36 @@ def _get_daily_background() -> Optional[str]:
     return None
 
 
-def build_full_dashboard_data() -> dict:
-    """构建完整的看板数据"""
+def _get_db_dashboard_data(db) -> dict:
+    """获取数据库相关的看板数据（同步，本地查询很快）"""
+    return {
+        "meal_plans": _get_meal_plans(db),
+        "recent_meals": _get_recent_meals(db),
+        "travel_pages": _get_travel_pages(db),
+        "messages": _get_board_messages(db),
+        "family_members": _get_family_members(db),
+    }
+
+
+async def build_full_dashboard_data() -> dict:
+    """构建完整的看板数据（异步并发获取外部 API，避免阻塞事件循环）"""
     db = SessionLocal()
     try:
+        # 数据库查询（同步但很快）
+        db_data = _get_db_dashboard_data(db)
+
+        # 外部 API 并发请求（天气、预报、壁纸）
+        weather, forecast, bg = await asyncio.gather(
+            asyncio.to_thread(_get_weather),
+            asyncio.to_thread(_get_weather_forecast),
+            asyncio.to_thread(_get_daily_background),
+        )
+
         return {
-            "meal_plans": _get_meal_plans(db),
-            "recent_meals": _get_recent_meals(db),
-            "travel_pages": _get_travel_pages(db),
-            "messages": _get_board_messages(db),
-            "family_members": _get_family_members(db),
-            "weather": _get_weather(),
-            "weather_forecast": _get_weather_forecast(),
-            "background_image": _get_daily_background(),
+            **db_data,
+            "weather": weather,
+            "weather_forecast": forecast,
+            "background_image": bg,
         }
     finally:
         db.close()
@@ -703,7 +722,7 @@ async def handle_dashboard_websocket(websocket: WebSocket):
     await register_dashboard(websocket)
 
     async def send_full_update():
-        data = build_full_dashboard_data()
+        data = await build_full_dashboard_data()
         msg = {
             "type": "dashboard_update",
             "timestamp": datetime.now().isoformat(),
