@@ -8,8 +8,21 @@ echo "========================================="
 echo "Mars Sandbox 部署脚本 (WebSocket版本)"
 echo "========================================="
 
-# 配置变量
-SERVER="root@<your-server-ip>"
+# 加载项目根目录 .env（含服务器 IP，已加入 .gitignore）
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ENV_FILE="${SCRIPT_DIR}/../.env"
+if [ -f "$ENV_FILE" ]; then
+    set -a
+    source "$ENV_FILE"
+    set +a
+else
+    echo "错误: 未找到 ${ENV_FILE}，请创建并添加 DEPLOY_SERVER_IP=x.x.x.x"
+    exit 1
+fi
+
+# 配置变量（从 .env 读取，避免硬编码暴露 IP）
+SERVER_IP="${DEPLOY_SERVER_IP:?请在 .env 中设置 DEPLOY_SERVER_IP}"
+SERVER="root@${SERVER_IP}"
 REMOTE_DIR="/opt/mars-sandbox"
 SERVICE_NAME="mars-sandbox"
 
@@ -128,10 +141,10 @@ echo "========================================="
 echo "部署完成!"
 echo "========================================="
 echo ""
-echo "前端页面: http://<your-server-ip>:8888/"
-echo "WebSocket端点: ws://<your-server-ip>:8888/ws/agent/{node_id}"
-echo "HTTP API: http://<your-server-ip>:8888/api/commands"
-echo "API文档: http://<your-server-ip>:8888/docs"
+echo "前端页面: http://${SERVER_IP}:8888/"
+echo "WebSocket端点: ws://${SERVER_IP}:8888/ws/agent/{node_id}"
+echo "HTTP API: http://${SERVER_IP}:8888/api/commands"
+echo "API文档: http://${SERVER_IP}:8888/docs"
 echo ""
 echo "查看日志: ssh $SERVER 'journalctl -u mars-sandbox -f'"
 echo ""
