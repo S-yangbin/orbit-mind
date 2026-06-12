@@ -489,6 +489,33 @@ export function Dashboard() {
     });
   }, [data?.messages]);
 
+  // ── 背景图预加载 + 双层淡入淡出：避免切换时闪烁 ──
+  const [bgLayers, setBgLayers] = useState<[string | null, string | null]>([null, null]);
+  const [activeLayer, setActiveLayer] = useState<0 | 1>(0);
+  const bgImage = data?.background_image ?? null;
+
+  useEffect(() => {
+    if (!bgImage) return;
+    if (bgLayers[0] === bgImage || bgLayers[1] === bgImage) return;
+    let cancelled = false;
+    const img = new window.Image();
+    img.onload = () => {
+      if (cancelled) return;
+      const next: 0 | 1 = activeLayer === 0 ? 1 : 0;
+      setBgLayers((prev) => {
+        const copy = [...prev] as [string | null, string | null];
+        copy[next] = bgImage;
+        return copy;
+      });
+      requestAnimationFrame(() => {
+        if (!cancelled) setActiveLayer(next);
+      });
+    };
+    img.onerror = () => {};
+    img.src = bgImage;
+    return () => { cancelled = true; };
+  }, [bgImage]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (!data) {
     return (
       <div style={{
@@ -503,9 +530,8 @@ export function Dashboard() {
     );
   }
 
-  const bgImage = data.background_image;
-  const weather = data.weather;
-  const forecast = data.weather_forecast;
+  const weather = data?.weather;
+  const forecast = data?.weather_forecast;
 
   return (
     <div style={{
@@ -514,16 +540,29 @@ export function Dashboard() {
       fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', sans-serif",
       overflow: "hidden",
     }}>
-      {/* 全屏壁纸背景 */}
-      {bgImage && (
+      {/* 全屏壁纸背景（双层淡入淡出，预加载完成后才切换） */}
+      {bgLayers[0] && (
         <div style={{
           position: "fixed",
           inset: 0,
-          backgroundImage: `url(${bgImage})`,
+          backgroundImage: `url(${bgLayers[0]})`,
           backgroundSize: "cover",
           backgroundPosition: "center",
           zIndex: 0,
-          transition: "opacity 0.8s ease",
+          opacity: activeLayer === 0 ? 1 : 0,
+          transition: "opacity 1s ease",
+        }} />
+      )}
+      {bgLayers[1] && (
+        <div style={{
+          position: "fixed",
+          inset: 0,
+          backgroundImage: `url(${bgLayers[1]})`,
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+          zIndex: 0,
+          opacity: activeLayer === 1 ? 1 : 0,
+          transition: "opacity 1s ease",
         }} />
       )}
 
