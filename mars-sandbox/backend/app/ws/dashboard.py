@@ -172,6 +172,19 @@ async def broadcast_switch_page(page: int, auto_rotate: bool = False, interval: 
     logger.info("切换页面指令已广播: page=%d, auto_rotate=%s, interval=%d", page, auto_rotate, interval)
 
 
+async def broadcast_screensaver(enabled: bool):
+    """广播屏保切换指令到所有 Dashboard
+    
+    Args:
+        enabled: True 进入屏保，False 唤醒
+    """
+    await broadcast_to_dashboards({
+        "type": "screensaver",
+        "enabled": enabled,
+    })
+    logger.info("屏保指令已广播: enabled=%s", enabled)
+
+
 def format_board_messages(db) -> str:
     """查询留言板数据，格式化为自然语言播报文本"""
     messages = _get_board_messages(db)

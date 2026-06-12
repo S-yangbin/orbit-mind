@@ -13,6 +13,7 @@ from ..ws.dashboard import (
     set_wallpaper_and_broadcast,
     broadcast_tts,
     broadcast_switch_page,
+    broadcast_screensaver,
     format_board_messages,
     format_today_schedule,
     format_today_meals,
@@ -147,3 +148,22 @@ async def switch_page(
         raise HTTPException(status_code=400, detail="page 必须是 0 或 1")
     await broadcast_switch_page(body.page, body.auto_rotate, body.interval)
     return {"ok": True, "page": body.page, "auto_rotate": body.auto_rotate, "interval": body.interval}
+
+
+class ScreensaverRequest(BaseModel):
+    enabled: bool  # True=进入屏保，False=唤醒
+
+
+@router.post("/screensaver")
+async def screensaver(
+    body: ScreensaverRequest,
+    _user=Depends(require_auth_or_api_key),
+):
+    """主动控制 Dashboard 屏保模式。
+
+    enabled=true 立即进入屏保，enabled=false 唤醒看板。
+
+    认证方式：Cookie Session 或 X-API-Key header。
+    """
+    await broadcast_screensaver(body.enabled)
+    return {"ok": True, "enabled": body.enabled}

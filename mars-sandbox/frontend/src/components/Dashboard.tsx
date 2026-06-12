@@ -121,6 +121,7 @@ export function Dashboard() {
     data, isConnected, familyMembers, acknowledgeMessage, contentVersion,
     ttsVersion, ttsText, ttsAudioUrl, ttsPage,
     switchPageVersion, switchPageTarget, autoRotate, autoRotateInterval,
+    screensaverVersion, screensaverEnabled,
   } = useDashboardWs();
   const [now, setNow] = useState(new Date());
   const [selectedTravelPage, setSelectedTravelPage] = useState<DashboardTravelPage | null>(null);
@@ -272,6 +273,75 @@ export function Dashboard() {
       resetIdleTimer();
     }
   }, [contentVersion, resetIdleTimer]);
+
+  // ── 远程屏保控制（WS 指令）──
+  useEffect(() => {
+    if (screensaverVersion === 0) return;
+    if (screensaverEnabled) {
+      // 强制进入屏保，清除空闲计时器
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+      setScreensaver(true);
+    } else {
+      // 强制唤醒，重启空闲计时器
+      setScreensaver(false);
+      resetIdleTimer();
+    }
+  }, [screensaverVersion, screensaverEnabled, resetIdleTimer]);
+
+  // ── 手势滑动切换页面 ──
+  const swipeStartXRef = useRef<number | null>(null);
+  const swipeStartYRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const SWIPE_THRESHOLD = 60; // 最小滑动距离 (px)
+    const SWIPE_MAX_VERTICAL = 80; // 垂直偏移上限，超过则不算横向滑动
+
+    const handleTouchStart = (e: TouchEvent) => {
+      // 屏保时不响应滑动
+      if (screensaver) return;
+      const touch = e.touches[0];
+      swipeStartXRef.current = touch.clientX;
+      swipeStartYRef.current = touch.clientY;
+    };
+
+    const handleTouchEnd = (e: TouchEvent) => {
+      if (swipeStartXRef.current === null || swipeStartYRef.current === null) return;
+      if (screensaver) return;
+
+      const touch = e.changedTouches[0];
+      const dx = touch.clientX - swipeStartXRef.current;
+      const dy = touch.clientY - swipeStartYRef.current;
+
+      swipeStartXRef.current = null;
+      swipeStartYRef.current = null;
+
+      // 垂直偏移太大，忽略
+      if (Math.abs(dy) > SWIPE_MAX_VERTICAL) return;
+      // 水平滑动不够，忽略
+      if (Math.abs(dx) < SWIPE_THRESHOLD) return;
+
+      // 停止自动轮播
+      if (autoRotateRef.current) {
+        clearInterval(autoRotateRef.current);
+        autoRotateRef.current = undefined;
+      }
+
+      if (dx < 0 && dashboardPage === 0) {
+        // 左滑：切换到下一页
+        setDashboardPage(1);
+      } else if (dx > 0 && dashboardPage === 1) {
+        // 右滑：切换到上一页
+        setDashboardPage(0);
+      }
+    };
+
+    document.addEventListener("touchstart", handleTouchStart, { passive: true });
+    document.addEventListener("touchend", handleTouchEnd, { passive: true });
+    return () => {
+      document.removeEventListener("touchstart", handleTouchStart);
+      document.removeEventListener("touchend", handleTouchEnd);
+    };
+  }, [screensaver, dashboardPage]);
 
   // 每分钟刷新（用于夜间模式判断）
   useEffect(() => {

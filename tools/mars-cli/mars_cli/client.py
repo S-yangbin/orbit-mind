@@ -719,6 +719,20 @@ class MarsClient:
         )
         return self._handle_response(resp)
 
+    def screensaver(self, enabled: bool) -> Dict[str, Any]:
+        """POST /api/dashboard/screensaver — 主动控制 Dashboard 屏保模式。
+
+        Args:
+            enabled: True 进入屏保，False 唤醒
+        """
+        self._ensure_auth()
+        resp = self.session.post(
+            self._url("/api/dashboard/screensaver"),
+            json={"enabled": enabled},
+            timeout=15,
+        )
+        return self._handle_response(resp)
+
     # ─── 学习计划 ────────────────────────────────────────────────────────────
 
     def schedule_list_types(self) -> Dict[str, Any]:

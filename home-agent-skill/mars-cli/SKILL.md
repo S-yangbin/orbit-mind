@@ -6,9 +6,10 @@ description: >-
   儿童学习计划等。
   看板壁纸支持从 Bing + Pexels 壁纸池（约23张）随机刷新。
   支持语音播报留言板、学习计划、今日菜谱等内容到 Dashboard。
+  支持远程切换屏保模式、切换页面。
   当用户提到：家庭服务器、留言板、餐饮计划、菜单、视频学习、云盘文件、
   页面管理、节点管理、远程命令执行、刷新壁纸、换壁纸、看板、
-  学习计划、作业、课程安排、今日计划、播报、朗读、语音播放时触发。
+  学习计划、作业、课程安排、今日计划、播报、朗读、语音播放、屏保、熄屏时触发。
   当用户说「让小皮帮我做xxx」或提到「小皮」相关请求时，也应触发本 Skill。
 compatibility: Requires mars-cli installed on the server, and mars-sandbox service running.
 metadata:
@@ -52,8 +53,9 @@ required_environment_variables:
 - 刷新看板壁纸
 - 管理儿童学习计划（活动类型、周模板、每日计划、完成情况）
 - 语音播报留言板、学习计划、今日菜谱等内容到 Dashboard
+- 控制看板进入屏保模式或唤醒看板
 
-触发关键词：家庭服务器、留言板、餐饮计划、菜单、吃什么、视频学习、云盘、页面管理、节点、远程命令、壁纸、看板、学习计划、作业、今日计划、播报、朗读、语音播放、TTS
+触发关键词：家庭服务器、留言板、餐饮计划、菜单、吃什么、视频学习、云盘、页面管理、节点、远程命令、壁纸、看板、学习计划、作业、今日计划、播报、朗读、语音播放、TTS、屏保、熄屏
 
 ## 前提条件
 
@@ -254,6 +256,7 @@ mars-cli dashboard list-wallpapers
 mars-cli dashboard set-wallpaper <filename>
 mars-cli dashboard broadcast [--source messages|schedule|meals|text] [--text '...'] [--page 0|1]
 mars-cli dashboard switch-page <0|1> [--auto-rotate] [--interval 30]
+mars-cli dashboard screensaver <true|false>
 ```
 
 | 命令 | 说明 |
@@ -270,6 +273,8 @@ mars-cli dashboard switch-page <0|1> [--auto-rotate] [--interval 30]
 | `dashboard switch-page 0` | 远程切换到家庭看板页 |
 | `dashboard switch-page 1` | 远程切换到学习计划页 |
 | `dashboard switch-page 0 --auto-rotate --interval 60` | 启动自动轮播，每 60 秒切换一次 |
+| `dashboard screensaver true` | 立即进入屏保模式（仅展示壁纸） |
+| `dashboard screensaver false` | 唤醒看板（恢复内容展示） |
 
 ### 学习计划 (`schedule`)
 
@@ -408,6 +413,12 @@ mars-cli dashboard switch-page 1
 
 # 启动自动轮播，每 60 秒在家庭看板和学习计划间切换
 mars-cli dashboard switch-page 0 --auto-rotate --interval 60
+
+# 立即进入屏保模式（仅展示壁纸背景）
+mars-cli dashboard screensaver true
+
+# 唤醒看板（恢复内容展示）
+mars-cli dashboard screensaver false
 ```
 
 ### 管理儿童学习计划

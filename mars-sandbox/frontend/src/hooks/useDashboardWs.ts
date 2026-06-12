@@ -25,6 +25,10 @@ interface UseDashboardWsReturn {
   autoRotate: boolean;
   /** 轮播间隔秒数 */
   autoRotateInterval: number;
+  /** 远程屏保控制信号：每次变化递增 */
+  screensaverVersion: number;
+  /** 远程屏保目标状态 (true=屏保, false=唤醒) */
+  screensaverEnabled: boolean;
 }
 
 /**
@@ -46,6 +50,8 @@ export function useDashboardWs(): UseDashboardWsReturn {
   const [switchPageTarget, setSwitchPageTarget] = useState(0);
   const [autoRotate, setAutoRotate] = useState(false);
   const [autoRotateInterval, setAutoRotateInterval] = useState(30);
+  const [screensaverVersion, setScreensaverVersion] = useState(0);
+  const [screensaverEnabled, setScreensaverEnabled] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
   const reconnectDelayRef = useRef(1000); // 初始重连延迟 1s
@@ -210,6 +216,14 @@ export function useDashboardWs(): UseDashboardWsReturn {
             }
             break;
 
+          case "screensaver":
+            // 远程屏保控制指令
+            if ((msg as any).enabled !== undefined) {
+              setScreensaverEnabled(!!(msg as any).enabled);
+              setScreensaverVersion((v) => v + 1);
+            }
+            break;
+
           case "pong":
             // 心跳响应，无需处理
             break;
@@ -276,5 +290,6 @@ export function useDashboardWs(): UseDashboardWsReturn {
     data, isConnected, lastUpdate, familyMembers, acknowledgeMessage, contentVersion,
     ttsVersion, ttsText, ttsAudioUrl, ttsPage,
     switchPageVersion, switchPageTarget, autoRotate, autoRotateInterval,
+    screensaverVersion, screensaverEnabled,
   };
 }

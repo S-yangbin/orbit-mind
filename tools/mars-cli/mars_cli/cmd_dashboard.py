@@ -139,3 +139,24 @@ def switch_page(
         detail = result.get("detail", "未知错误")
         typer.echo(f"\n切换失败: {detail}", err=True)
         raise typer.Exit(code=1)
+
+
+@app.command("screensaver")
+def screensaver(
+    enabled: bool = typer.Argument(..., help="true=进入屏保，false=唤醒看板"),
+):
+    """主动控制 Dashboard 屏保模式。
+
+    示例:
+      mars-cli dashboard screensaver true     # 立即进入屏保
+      mars-cli dashboard screensaver false    # 唤醒看板
+    """
+    result = get_client().screensaver(enabled=enabled)
+    _out(result)
+    if result.get("ok"):
+        state = "屏保已开启" if enabled else "看板已唤醒"
+        typer.echo(f"\n{state}。", err=True)
+    else:
+        detail = result.get("detail", "未知错误")
+        typer.echo(f"\n操作失败: {detail}", err=True)
+        raise typer.Exit(code=1)
