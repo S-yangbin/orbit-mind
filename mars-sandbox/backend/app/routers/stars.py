@@ -11,7 +11,7 @@ from ..dependencies import require_auth
 from ..models import StarReward
 from ..schemas import StarRewardResponse, StarRewardCreate, StarSummary
 from ..utils.timezone import beijing_now
-from ..ws.dashboard import broadcast_to_dashboards, build_full_dashboard_data
+from ..ws.dashboard import broadcast_to_dashboards, build_star_update_data
 
 router = APIRouter(prefix="/api/stars", tags=["stars"])
 
@@ -103,7 +103,7 @@ async def create_star(
 
     # Broadcast update to all dashboards
     try:
-        data = await build_full_dashboard_data()
+        data = await build_star_update_data()
         await broadcast_to_dashboards({"type": "star_update", "data": data})
     except Exception:
         pass
@@ -132,7 +132,7 @@ async def redeem_star(
 
     # Broadcast update to all dashboards
     try:
-        data = await build_full_dashboard_data()
+        data = await build_star_update_data()
         await broadcast_to_dashboards({"type": "star_update", "data": data})
     except Exception:
         pass
@@ -156,7 +156,7 @@ async def delete_star(
 
     # Broadcast update to all dashboards
     try:
-        data = await build_full_dashboard_data()
+        data = await build_star_update_data()
         await broadcast_to_dashboards({"type": "star_update", "data": data})
     except Exception:
         pass

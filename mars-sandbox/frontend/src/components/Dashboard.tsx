@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, memo, useCallback } from "react";
-import { Spin, Typography, Tag, Image, Modal, Button, Input } from "antd";
+import { Spin, Typography, Tag, Image, Modal, Button, Input, message } from "antd";
 import {
   WifiOutlined,
   DisconnectOutlined,
@@ -13,10 +13,10 @@ import {
   RightOutlined,
 } from "@ant-design/icons";
 import { DashboardPets } from "./DashboardPets";
-import { DashboardButterflies } from "./DashboardButterflies";
 import { StarWall } from "./StarWall";
 import { useDashboardWs } from "../hooks/useDashboardWs";
 import { updateDailyItem, fetchDailySchedule } from "../api/schedule";
+import { updateMember } from "../api/meals";
 import { resolveColor, tintBackground, formatBoardDateTime, mealPhotoToUrl } from "../utils";
 import type {
   DashboardMealPlanItem,
@@ -29,6 +29,11 @@ import type {
 } from "../types";
 
 const { Title, Text } = Typography;
+
+const AVATAR_OPTIONS = [
+  "👨", "👩", "👧", "👦", "👴", "👵", "🧑", "👶",
+  "🐱", "🐶", "🐰", "🐼", "🦊", "🐻", "🐨", "🐸",
+];
 
 // 留言作者首字母头像的柔和背景色
 const AVATAR_COLORS = [
@@ -146,6 +151,30 @@ export function Dashboard() {
   const [scheduleNote, setScheduleNote] = useState("");
   // 学习计划放大弹窗
   const [scheduleFullscreen, setScheduleFullscreen] = useState(false);
+
+  // 长按修改头像
+  const [avatarEditMember, setAvatarEditMember] = useState<DashboardFamilyMember | null>(null);
+  const [avatarEditValue, setAvatarEditValue] = useState("");
+  const [avatarSaving, setAvatarSaving] = useState(false);
+
+  const openAvatarEdit = (member: DashboardFamilyMember) => {
+    setAvatarEditMember(member);
+    setAvatarEditValue(member.avatar);
+  };
+
+  const handleAvatarSave = async () => {
+    if (!avatarEditMember || !avatarEditValue) return;
+    setAvatarSaving(true);
+    try {
+      await updateMember(avatarEditMember.id, { avatar: avatarEditValue });
+      message.success("头像已更新");
+      setAvatarEditMember(null);
+    } catch {
+      message.error("保存头像失败");
+    } finally {
+      setAvatarSaving(false);
+    }
+  };
 
   // 日期偏移变化时，获取对应日期的学习计划
   useEffect(() => {
@@ -512,8 +541,6 @@ export function Dashboard() {
       {/* 宠物猫狗（屏保时隐藏，省电） */}
       {!screensaver && <DashboardPets />}
 
-      {/* 蝴蝶飞舞（屏保时隐藏，省电） */}
-      {!screensaver && <DashboardButterflies />}
 
       {/* 内容层（屏保时渐隐） */}
       <div style={{
@@ -995,6 +1022,7 @@ export function Dashboard() {
               messages={activeMessages}
               familyMembers={familyMembers}
               acknowledgeMessage={acknowledgeMessage}
+              onLongPressAvatar={openAvatarEdit}
             />
           </div>
         </div>
@@ -1218,6 +1246,42 @@ export function Dashboard() {
           />
         </Modal>
       </div>
+
+      {/* 长按修改头像弹窗 */}
+      <Modal
+        title={`修改 ${avatarEditMember?.name || ""} 的头像`}
+        open={!!avatarEditMember}
+        onOk={handleAvatarSave}
+        onCancel={() => setAvatarEditMember(null)}
+        okText="保存"
+        cancelText="取消"
+        confirmLoading={avatarSaving}
+        width={400}
+      >
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, padding: "12px 0" }}>
+          {AVATAR_OPTIONS.map((a) => (
+            <div
+              key={a}
+              onClick={() => setAvatarEditValue(a)}
+              style={{
+                width: 52,
+                height: 52,
+                fontSize: 28,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                borderRadius: 12,
+                cursor: "pointer",
+                border: avatarEditValue === a ? "3px solid #1677ff" : "2px solid #e5e7eb",
+                background: avatarEditValue === a ? "#e6f4ff" : "#fff",
+                transition: "all 0.2s",
+              }}
+            >
+              {a}
+            </div>
+          ))}
+        </div>
+      </Modal>
     </div>
   );
 }
@@ -1398,10 +1462,12 @@ const MessageSection = memo(function MessageSection({
   messages,
   familyMembers,
   acknowledgeMessage,
+  onLongPressAvatar,
 }: {
   messages: BoardMessage[];
   familyMembers: DashboardFamilyMember[];
   acknowledgeMessage: (msgId: number, memberId: number) => void;
+  onLongPressAvatar: (member: DashboardFamilyMember) => void;
 }) {
   return (
     <div style={{ borderRadius: 16, padding: "16px 20px" }}>
@@ -1481,10 +1547,22 @@ const MessageSection = memo(function MessageSection({
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6, paddingLeft: isPinned ? 50 : 46 }}>
                   {familyMembers.map((member) => {
                     const isAcked = msg.acknowledged_by?.includes(member.id);
+                    let lpTimer: ReturnType<typeof setTimeout> | null = null;
+                    let lpFired = false;
                     return (
                       <button
                         key={member.id}
-                        onClick={() => acknowledgeMessage(msg.id, member.id)}
+                        onClick={(e) => {
+                          if (lpFired) { e.preventDefault(); e.stopPropagation(); lpFired = false; }
+                          else acknowledgeMessage(msg.id, member.id);
+                        }}
+                        onPointerDown={(e) => {
+                          e.preventDefault();
+                          lpFired = false;
+                          lpTimer = setTimeout(() => { lpFired = true; onLongPressAvatar(member); }, 500);
+                        }}
+                        onPointerUp={() => { if (lpTimer) clearTimeout(lpTimer); lpTimer = null; }}
+                        onPointerLeave={() => { if (lpTimer) clearTimeout(lpTimer); lpTimer = null; }}
                         style={{
                           display: "flex", alignItems: "center", gap: 4,
                           padding: "3px 10px", borderRadius: 12,
@@ -1492,7 +1570,7 @@ const MessageSection = memo(function MessageSection({
                           background: isAcked ? "#dcfce7" : "#f8fafc",
                           color: isAcked ? "#15803d" : "#64748b",
                           fontSize: 12, fontWeight: 500, cursor: "pointer",
-                          lineHeight: 1,
+                          lineHeight: 1, userSelect: "none", WebkitTouchCallout: "none",
                         }}
                       >
                         <span style={{ fontSize: 14 }}>{member.avatar}</span>

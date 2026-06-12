@@ -1,10 +1,13 @@
 """Learning plan (children's daily schedule) CRUD routes."""
 
 import asyncio
-from datetime import date
+import logging
+from datetime import date, timedelta
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload
+
+logger = logging.getLogger(__name__)
 
 from ..database import get_db
 from ..dependencies import require_auth
@@ -178,6 +181,32 @@ async def create_or_update_template(
     db.refresh(tpl)
     # 重新加载 days 关系
     db.refresh(tpl, ["days"])
+
+    # 清除未来日期的非手动覆盖日程，让新模板在下次访问时重新生成
+    cleanup_start = date.today()
+    cleanup_end = cleanup_start + timedelta(days=365)
+    deleted_count = (
+        db.query(DailySchedule)
+        .filter(
+            DailySchedule.date >= cleanup_start,
+            DailySchedule.date <= cleanup_end,
+            DailySchedule.is_override == 0,
+        )
+        .delete(synchronize_session=False)
+    )
+    db.commit()
+    if deleted_count:
+        logger.info(
+            "模板更新：已清除 %d 条未来日期的模板生成日程，将从新模板重新生成", deleted_count
+        )
+
+    # 广播更新到所有 dashboard
+    try:
+        data = await build_full_dashboard_data()
+        await broadcast_to_dashboards({"type": "dashboard_update", "data": data})
+    except Exception:
+        pass
+
     return _template_to_response(tpl)
 
 
@@ -251,7 +280,6 @@ async def get_daily_range(
     if start > end:
         raise HTTPException(status_code=400, detail="start 日期不能晚于 end 日期")
 
-    from datetime import timedelta
     current = start
     while current <= end:
         _ensure_daily_from_template(db, current)

@@ -315,6 +315,8 @@ export function LearningPlan() {
       setShowTemplateModal(false);
       const tpl = await fetchActiveTemplate();
       setTemplate(tpl);
+      // 重新加载日历数据，让新模板在未来日期生效
+      await loadData();
     } catch (e: any) {
       message.error(e?.response?.data?.detail || "保存失败");
     }

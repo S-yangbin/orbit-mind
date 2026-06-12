@@ -81,6 +81,17 @@ export function useDashboardWs(): UseDashboardWsReturn {
             }
             break;
 
+          case "star_update":
+            // 星星数据更新（颁发/兑换/删除后即时推送）
+            if (msg.data?.star_summary) {
+              setData((prev) => {
+                if (!prev) return prev;
+                return { ...prev, star_summary: msg.data!.star_summary };
+              });
+              setContentVersion((v) => v + 1);
+            }
+            break;
+
           case "message_added":
             // 新留言
             if (msg.message && "id" in msg.message) {

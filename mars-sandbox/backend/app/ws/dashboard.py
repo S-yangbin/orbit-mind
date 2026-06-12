@@ -1122,6 +1122,18 @@ async def build_full_dashboard_data() -> dict:
     }
 
 
+async def build_star_update_data() -> dict:
+    """构建星星汇总更新数据（轻量级，不查天气/壁纸）"""
+    def _work():
+        db = SessionLocal()
+        try:
+            return _get_star_summary(db)
+        finally:
+            db.close()
+
+    return {"star_summary": await asyncio.to_thread(_work)}
+
+
 async def _handle_acknowledge_message(message_id, member_id, ws: WebSocket):
     """
     处理留言已读确认（toggle）：
