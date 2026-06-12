@@ -119,7 +119,7 @@ const TRAVEL_GRADIENTS = [
 export function Dashboard() {
   const {
     data, isConnected, familyMembers, acknowledgeMessage, contentVersion,
-    ttsVersion, ttsText, ttsAudioUrl, ttsPage,
+    ttsVersion, ttsText, ttsPage,
     switchPageVersion, switchPageTarget, autoRotate, autoRotateInterval,
     screensaverVersion, screensaverEnabled,
   } = useDashboardWs();
@@ -160,9 +160,8 @@ export function Dashboard() {
       .catch(() => setOffsetSchedule([]));
   }, [scheduleDayOffset]);
 
-  // ── TTS 语音播报（使用 <audio> 元素播放后端生成的 mp3）──
+  // ── TTS 语音播报（使用 Web Speech API，iPad SPA 兼容）──
   const autoRotateRef = useRef<ReturnType<typeof setInterval>>();
-  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     if (ttsVersion === 0) return;
@@ -170,15 +169,16 @@ export function Dashboard() {
     if (ttsPage !== null && ttsPage !== dashboardPage) {
       setDashboardPage(ttsPage);
     }
-    // 使用 <audio> 元素播放后端生成的 mp3
-    if (ttsAudioUrl) {
-      const audio = audioRef.current;
-      if (audio) {
-        audio.src = ttsAudioUrl;
-        audio.play().catch((e) => {
-          console.warn("TTS 播放失败（需要用户首次触摸解锁）:", e);
-        });
-      }
+    // 使用 Web Speech API 播放语音（iPad 上 <audio> 无法播放，改用原生 TTS）
+    try {
+      window.speechSynthesis.cancel(); // 停止之前的播报
+      const utter = new SpeechSynthesisUtterance(ttsText);
+      utter.lang = "zh-CN";
+      utter.rate = 1.0;
+      utter.pitch = 1.0;
+      window.speechSynthesis.speak(utter);
+    } catch (e) {
+      console.warn("TTS 播放失败:", e);
     }
   }, [ttsVersion]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -476,9 +476,6 @@ export function Dashboard() {
       fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', sans-serif",
       overflow: "hidden",
     }}>
-      {/* TTS 音频元素（用于播放后端生成的语音） */}
-      <audio ref={audioRef} preload="auto" />
-
       {/* 全屏壁纸背景 */}
       {bgImage && (
         <div style={{

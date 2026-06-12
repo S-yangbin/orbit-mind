@@ -4,7 +4,6 @@ Dashboard WebSocket handler
 """
 
 import asyncio
-import hashlib
 import json
 import logging
 import os
@@ -15,8 +14,6 @@ import requests
 from datetime import datetime, date, timedelta
 from typing import Set, Optional
 
-import dashscope
-from dashscope.audio.tts_v2 import SpeechSynthesizer
 
 from sqlalchemy.orm import joinedload
 from starlette.websockets import WebSocket, WebSocketDisconnect
@@ -41,7 +38,6 @@ _weather_forecast_cache: dict = {"data": None, "timestamp": 0}
 _background_cache: dict = {"data": None, "timestamp": 0}
 _bing_images_cache: dict = {"data": None, "timestamp": 0}  # 缓存 Bing 8张图片 URL 列表
 _pexels_images_cache: dict = {"data": None, "timestamp": 0}  # 缓存 Pexels 随机壁纸 URL 列表
-_tts_cache: dict = {}  # TTS 缓存：text_hash -> audio_url
 _cache_lock = threading.Lock()  # 保护缓存 dict 的跨线程读写
 
 WEATHER_CACHE_TTL = 30 * 60  # 30分钟
@@ -95,66 +91,9 @@ async def broadcast_to_dashboards(msg: dict):
                 _dashboard_connections.discard(ws)
 
 
-def _generate_tts_audio(text: str) -> Optional[str]:
-    """调用阿里云 CosyVoice TTS API 生成音频文件。
-    
-    Args:
-        text: 要播报的文本
-        
-    Returns:
-        生成的音频文件 URL（如 /tts/abc123.mp3），失败返回 None
-    """
-    # 检查缓存：相同文本不重复生成
-    text_hash = hashlib.md5(text.encode()).hexdigest()[:12]
-    with _cache_lock:
-        if text_hash in _tts_cache:
-            cached_url = _tts_cache[text_hash]
-            logger.info("TTS 命中缓存: %s", cached_url)
-            return cached_url
-    
-    # 调用 CosyVoice API 生成音频
-    api_key = settings.DASHSCOPE_API_KEY
-    if not api_key:
-        logger.error("DASHSCOPE_API_KEY 未配置，无法生成 TTS")
-        return None
-    
-    try:
-        dashscope.api_key = api_key
-        synthesizer = SpeechSynthesizer(
-            model="cosyvoice-v1",
-            voice="longxiaochun",  # 温暖女声
-        )
-        audio = synthesizer.call(text)
-        
-        # 保存到文件
-        tts_dir = settings.TTS_DIR
-        os.makedirs(tts_dir, exist_ok=True)
-        filename = f"{text_hash}.mp3"
-        filepath = os.path.join(tts_dir, filename)
-        with open(filepath, "wb") as f:
-            f.write(audio)
-        
-        audio_url = f"/tts/{filename}"
-        logger.info("TTS 音频已生成: %s (%d bytes)", audio_url, len(audio))
-        
-        # 存入缓存
-        with _cache_lock:
-            _tts_cache[text_hash] = audio_url
-        
-        return audio_url
-    except Exception as e:
-        logger.error("TTS 生成失败: %s", e, exc_info=True)
-        return None
-
-
 async def broadcast_tts(text: str, page: int | None = None):
-    """生成 TTS 音频并广播播报指令到所有 Dashboard"""
-    # 在线程池中生成音频（避免阻塞事件循环）
-    audio_url = await asyncio.to_thread(_generate_tts_audio, text)
-    
+    """广播 TTS 播报指令到所有 Dashboard（前端使用 Web Speech API 播放）"""
     msg: dict = {"type": "tts_speak", "text": text}
-    if audio_url:
-        msg["audio_url"] = audio_url
     if page is not None:
         msg["page"] = page
     await broadcast_to_dashboards(msg)

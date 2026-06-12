@@ -60,7 +60,6 @@ class Settings:
     VIDEO_NOTES_DIR: str = os.getenv("VIDEO_NOTES_DIR", "/mnt/oss-sybuddy/video-notes")
     MEAL_PHOTO_DIR: str = os.getenv("MEAL_PHOTO_DIR", "/mnt/oss-sybuddy/data/meals")
     WALLPAPER_DIR: str = os.getenv("WALLPAPER_DIR", "/mnt/oss-sybuddy/data/wallpapers")
-    TTS_DIR: str = os.getenv("TTS_DIR", "/mnt/oss-sybuddy/data/tts")
 
     # Scan
     SCAN_INTERVAL: int = int(os.getenv("SCAN_INTERVAL", "300"))
