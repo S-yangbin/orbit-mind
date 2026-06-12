@@ -1,96 +1,119 @@
-# Orbit Mind - 家庭AI中枢系统 (WebSocket 架构)
+# Orbit Mind
 
-Orbit Mind 是一个家庭AI中枢系统,采用 WebSocket 长连接架构,实现智能家居控制、远程命令执行和电子墨水屏显示等功能。
+家庭AI中枢系统 —— 通过 WebSocket 长连接架构，统一管控智能家居设备、家庭信息看板、远程命令执行和电子墨水屏显示。
 
-## 架构概览
-
-```
-IM → Hermes → mars-sandbox (WebSocket服务端) ↔ home-agent (WebSocket客户端) → 设备
-                    ↑
-              HTTP API (节点管理/查询)
-```
-
-### 核心组件
-
-- **mars-sandbox**: WebSocket服务端,负责节点管理、命令转发和结果返回
-- **home-agent**: WebSocket客户端,连接到mars-sandbox,接收并执行命令
-- **Hermes**: AI代理,通过HTTP API调用mars-sandbox发送命令
-- **EPD Tool**: 电子墨水屏控制工具,通过BLE控制显示设备
-
-## 项目结构
+## 架构
 
 ```
-orbit-mind/
-├── home-agent/              # 家庭服务器守护进程 (WebSocket客户端)
-│   ├── main.py             # 主程序入口
-│   ├── config.py           # 配置管理模块
-│   ├── ws_client.py        # WebSocket客户端
-│   ├── command_executor.py # 命令执行器
-│   ├── security.py         # 安全校验模块
-│   ├── command_logger.py   # 审计日志模块
-│   └── requirements.txt    # Python依赖
-├── home-agent-skill/        # Hermes技能定义
-│   └── home-hub/           # 家庭中枢技能
-├── shared/                  # 共享模块
-│   └── message_protocol.py # WebSocket消息协议定义
-├── tools/                   # 工具集
-│   └── epd_tool/           # 电子墨水屏控制工具
-├── config.example.yaml      # 配置示例文件
-└── LICENSE                  # Apache 2.0 许可证
+IM → Hermes AI → mars-sandbox (服务端 + Web后台) ↔ home-agent (客户端) → 设备
 ```
 
-## 主要组件
+- **mars-sandbox**: WebSocket 服务端 + Web 管理后台，负责节点管理、命令转发、看板推送
+- **home-agent**: 部署在家庭服务器上的 WebSocket 客户端，接收并执行命令
+- **mars-cli**: 命令行工具，专为大模型调用设计
+- **EPD Tool**: BLE 电子墨水屏控制工具
 
-### 1. Home Agent (家庭服务器守护进程)
+## 技术栈
 
-Home Agent 是一个长驻进程,通过 WebSocket 连接 mars-sandbox 接收命令并执行,支持:
+- 后端: [Python](https://www.python.org/) / [FastAPI](https://fastapi.tiangolo.com/) / [SQLAlchemy](https://www.sqlalchemy.org/) / [SQLite](https://www.sqlite.org/)
+- 前端: [React](https://react.dev/) / [TypeScript](https://www.typescriptlang.org/) / [Vite](https://vitejs.dev/) / [Ant Design](https://ant.design/)
+- 通信: [WebSocket](https://developer.mozilla.org/en-US/docs/Web/API/WebSocket) 长连接（节点管理 + 看板实时推送）
+- 部署: [systemd](https://systemd.io/) / [nginx](https://nginx.org/)
+- CLI: [Typer](https://typer.tiangolo.com/)
+- BLE: 电子墨水屏控制
 
-- **实时命令执行**: WebSocket长连接,毫秒级延迟
-- **自动重连**: 指数退避重连机制,保证连接可靠性
-- **心跳保活**: 定期发送心跳,实时感知节点状态
-- **安全控制**: 支持黑白名单机制,防止危险命令执行
-- **审计日志**: 记录所有命令执行情况
-- **优雅退出**: 支持信号处理,安全关闭
-- **systemd集成**: 提供systemd服务文件,便于部署
+## 功能
 
-#### 快速开始
+### 家庭看板 (Dashboard)
 
-1. 安装依赖:
-   ```bash
-   cd home-agent
-   pip install -r requirements.txt
-   ```
+全屏展示页面，iPad 横屏优化，WebSocket 实时推送。
 
-2. 配置:
-   ```bash
-   cp ../config.example.yaml ../config.yaml
-   # 编辑 config.yaml 填入mars-sandbox配置
-   ```
+- 食谱安排（周末菜单 + AI 智能生成）
+- 生活/旅游计划
+- 家庭留言板（置顶、颜色标识、过期管理）
+- 宠物互动（旺财/咪咪，点击互动 + 自言自语）
+- 蝴蝶飞舞动效
+- 省电模式（长期驻留优化）
 
-3. 运行:
-   ```bash
-   python main.py
-   ```
+### 留言板 (Board)
 
-4. 设置环境变量:
-   ```bash
-   export MARS_SANDBOX_URL="ws://your-mars-sandbox-host:8888"
-   export HOME_AGENT_NODE_SECRET="your-node-secret"
-   ```
+- 留言增删改（内容/作者/颜色/过期时间）
+- ColorPicker 颜色选择（10色预设 + 任意色）
+- 家庭成员颜色自动关联
 
-### 2. EPD Tool (电子墨水屏控制工具)
+### 食谱管理 (Meals)
 
-EPD Tool 是一个通过BLE控制电子墨水屏设备的命令行工具，支持多种尺寸的电子墨水屏。
+- 菜品管理与历史记录
+- AI 智能菜品生成（基于家庭偏好）
+- 拍照识别菜品
+- 喜好动态积累
 
-#### 功能特性
+### 云盘 (Cloud Drive)
 
-- 支持多种尺寸的电子墨水屏(4.2寸、5.83寸、7.5寸等)
-- 支持黑白、三色、四色显示
-- 图像显示和文字渲染
-- 设备配置和管理
-- BLE连接控制
+- 文件浏览/上传/下载
+- 目录创建/复制/移动
+- 签名 URL + 上传进度展示
 
-#### 安装使用
+### 视频管理 (Videos)
+
+- 视频列表与在线播放
+- 上传与处理（失败自动重试）
+
+### 家庭设置 (Settings)
+
+- 成员管理（添加/编辑/删除 + 头像）
+- 留言板默认颜色
+- 节点管理与远程命令执行
+
+## 快速开始
+
+### 克隆仓库
+
+```bash
+git clone https://github.com/your-username/orbit-mind.git
+cd orbit-mind
+```
+
+### 启动后端
+
+```bash
+cd mars-sandbox/backend
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8888
+```
+
+### 启动前端
+
+```bash
+cd mars-sandbox/frontend
+pnpm install
+pnpm dev
+```
+
+访问 http://localhost:5173
+
+### 部署 Home Agent
+
+```bash
+cd home-agent
+pip install -r requirements.txt
+
+# 配置
+cp ../config.example.yaml ../config.yaml
+
+# 设置环境变量
+export MARS_SANDBOX_URL="ws://your-mars-sandbox-host:8888"
+export HOME_AGENT_NODE_SECRET="your-node-secret"
+
+# 运行
+python main.py
+```
+
+配置优先级: 环境变量 > YAML 配置文件 > 默认值，详见 [config.example.yaml](config.example.yaml)。
+
+### 安装 EPD Tool
 
 ```bash
 cd tools/epd_tool
@@ -98,49 +121,35 @@ pip install -e .
 epd-tool --help
 ```
 
-### 3. 消息协议
+## 项目结构
 
-项目使用WebSocket进行实时通信,消息格式为JSON:
+```
+orbit-mind/
+├── mars-sandbox/               # Web 管理后台
+│   ├── backend/                #   FastAPI 后端
+│   │   ├── app/routers/        #     API 路由
+│   │   ├── app/services/       #     业务服务（AI、视频处理）
+│   │   ├── app/ws/             #     WebSocket 模块
+│   │   └── tests/              #     测试
+│   ├── frontend/               #   React + Vite 前端
+│   └── deploy.sh               #   部署脚本
+├── home-agent/                 # 家庭服务器守护进程
+├── shared/                     # 共享消息协议
+├── tools/
+│   ├── epd_tool/               # 电子墨水屏控制
+│   └── mars-cli/               # CLI 工具
+├── config.example.yaml         # 配置示例
+└── LICENSE                     # Apache 2.0
+```
 
-- **RegisterMessage**: 节点注册消息
-- **HeartbeatMessage**: 心跳消息
-- **CommandMessage**: 命令消息,包含要执行的命令和超时设置
-- **ResultMessage**: 结果消息,包含命令执行结果和退出码
-- **ErrorMessage**: 错误消息
+## 安全
 
-## 配置说明
-
-项目支持多种配置方式,优先级从高到低:
-
-1. 环境变量
-2. YAML配置文件
-3. 默认值
-
-详见 [config.example.yaml](config.example.yaml) 获取配置示例。
-
-### 关键配置项
-
-- `mars_sandbox_url`: mars-sandbox WebSocket地址
-- `node_secret`: 节点密钥(用于WebSocket连接认证)
-- `heartbeat_interval`: 心跳间隔(秒)
-- `reconnect_delay`: 重连延迟(秒)
-
-## 安全特性
-
-- 命令黑白名单机制
-- 命令执行超时控制
-- 审计日志记录
+- 命令黑白名单
+- 执行超时控制
+- 审计日志
 - 危险命令拦截
-- WebSocket连接认证(node_secret)
+- WebSocket 连接认证（node_secret）
 
-## 架构优势
+## License
 
-- **低延迟**: WebSocket长连接,毫秒级响应
-- **高可靠**: 自动重连+心跳检测,实时感知节点状态
-- **易运维**: 集中管理,无需维护消息队列
-- **低成本**: 去除云服务依赖,减少外部依赖
-- **易扩展**: 支持多节点并发,支持实时交互场景
-
-## 许可证
-
-本项目采用 Apache 2.0 许可证，详见 [LICENSE](LICENSE) 文件。
+Apache 2.0 - 详见 [LICENSE](LICENSE)。

@@ -21,6 +21,7 @@ from ..models import (
     BoardMessage, Page, MealPlan, MealPlanItem, MealLog, Dish, FamilyMember
 )
 from ..config import settings
+from ..services.ai_service import generate_wallpaper as _ai_generate_wallpaper
 
 logger = logging.getLogger(__name__)
 
@@ -796,6 +797,89 @@ async def refresh_wallpaper_and_broadcast() -> Optional[str]:
         "data": {"background_image": new_bg},
     })
     logger.info("壁纸已刷新并广播给 %d 个 dashboard 连接 (壁纸池: %d 张)", len(_dashboard_connections), len(images))
+    return new_bg
+
+
+async def generate_ai_wallpaper_and_broadcast(prompt: Optional[str] = None) -> Optional[str]:
+    """AI 生成壁纸并广播给所有已连接的 Dashboard。
+
+    Args:
+        prompt: 自定义生成提示词，为 None 时使用内置季节主题。
+
+    Returns:
+        生成的壁纸 URL（相对路径），或 None（失败）。
+    """
+    # AI 图片生成耗时较长，放在线程池执行
+    filename = await asyncio.to_thread(_ai_generate_wallpaper, prompt)
+    if not filename:
+        return None
+
+    new_bg = f"/wallpapers/{filename}"
+
+    # 更新壁纸缓存
+    with _cache_lock:
+        _background_cache["data"] = new_bg
+        _background_cache["timestamp"] = time.time()
+
+    await broadcast_to_dashboards({
+        "type": "wallpaper_updated",
+        "timestamp": datetime.now().isoformat(),
+        "data": {"background_image": new_bg},
+    })
+    logger.info("AI 壁纸已生成并广播给 %d 个 dashboard 连接: %s", len(_dashboard_connections), new_bg)
+    return new_bg
+
+
+def list_wallpapers() -> list[dict]:
+    """列出壁纸目录中所有已生成的 AI 壁纸文件。"""
+    import os
+
+    wallpaper_dir = settings.WALLPAPER_DIR
+    if not os.path.isdir(wallpaper_dir):
+        return []
+
+    result = []
+    for f in sorted(os.listdir(wallpaper_dir), reverse=True):
+        if not f.lower().endswith((".png", ".jpg", ".jpeg", ".webp")):
+            continue
+        filepath = os.path.join(wallpaper_dir, f)
+        stat = os.stat(filepath)
+        result.append({
+            "filename": f,
+            "url": f"/wallpapers/{f}",
+            "size": stat.st_size,
+            "created": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+        })
+    return result
+
+
+async def set_wallpaper_and_broadcast(filename: str) -> Optional[str]:
+    """设置指定壁纸并广播给所有已连接的 Dashboard。
+
+    Args:
+        filename: 壁纸文件名（不含路径）。
+
+    Returns:
+        壁纸 URL（相对路径），或 None（文件不存在）。
+    """
+    import os
+
+    filepath = os.path.join(settings.WALLPAPER_DIR, filename)
+    if not os.path.isfile(filepath):
+        return None
+
+    new_bg = f"/wallpapers/{filename}"
+
+    with _cache_lock:
+        _background_cache["data"] = new_bg
+        _background_cache["timestamp"] = time.time()
+
+    await broadcast_to_dashboards({
+        "type": "wallpaper_updated",
+        "timestamp": datetime.now().isoformat(),
+        "data": {"background_image": new_bg},
+    })
+    logger.info("壁纸已设置并广播给 %d 个 dashboard 连接: %s", len(_dashboard_connections), new_bg)
     return new_bg
 
 

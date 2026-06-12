@@ -64,6 +64,9 @@ app = typer.Typer(
         "  mars-cli drive list                       # 查看云盘文件\n"
         "  mars-cli health                           # 检查服务状态\n"
         "  mars-cli dashboard refresh-wallpaper      # 刷新看板壁纸\n"
+        "  mars-cli dashboard generate-wallpaper     # AI 生成高清壁纸\n"
+        "  mars-cli dashboard list-wallpapers        # 列出已生成壁纸\n"
+        "  mars-cli dashboard set-wallpaper <file>   # 设置指定壁纸\n"
     ),
     add_completion=False,
     no_args_is_help=True,

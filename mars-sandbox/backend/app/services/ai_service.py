@@ -1,6 +1,7 @@
 """AI service layer using bailian-cli (bl) for dish recognition and meal planning."""
 import json
 import logging
+import os
 import re
 import subprocess
 from datetime import date, timedelta
@@ -9,6 +10,18 @@ from typing import List, Dict, Any, Optional
 from ..config import settings
 
 logger = logging.getLogger(__name__)
+
+# AI 壁纸生成主题模板（随季节自动选择）
+_WALLPAPER_THEMES = [
+    "春季繁花盛开的山谷，粉白色樱花与嫩绿新芽交相辉映，远处青山如黛，淡金色晨光透过花枝洒落，宁静温暖的田园风光",
+    "夏日清晨的高山草原，翠绿草甸延伸至天际，野花点缀其间，蓝天白云倒映在清澈湖水中，清新明亮",
+    "金秋时层林尽染的山谷，红枫金黄银杏色彩绚烂，清澈溪流穿越其中，夕阳余晖为远山镶上金边，丰饶宁静",
+    "冬日雪后初晴的山景，银装素裹的松林覆盖山坡，天空湛蓝如洗，一缕暖阳穿过云层照亮雪地，纯洁静谧",
+    "壮丽的星空夜景，璀璨银河横跨天际，前景是剪影般的远山与平静湖面，星光倒映水中，神秘浪漫",
+    "海边日落全景，橙红色天空渐变为紫色，金色太阳缓缓沉入海平线，波光粼粼的海面映满霞光，温暖壮观",
+    "清晨云海中的山峰，金色朝阳从云端升起，云海翻涌如棉絮，远山若隐若现，壮丽空灵",
+    "竹林小径与中式庭院，翠绿竹林形成天然拱门，石板路蜿蜒其中，光影斑驳，禅意盎然",
+]
 
 
 def _run_bl(args: List[str], timeout: int = 120) -> Optional[str]:
@@ -269,3 +282,63 @@ def generate_monthly_weekend_plan(
         return None
 
     return plan
+
+
+def generate_wallpaper(prompt: Optional[str] = None) -> Optional[str]:
+    """Generate a wallpaper image using bl image generate.
+
+    Args:
+        prompt: Custom prompt. If None, selects a seasonal theme automatically.
+
+    Returns:
+        The filename (not full path) of the saved wallpaper, or None on failure.
+    """
+    import random
+
+    wallpaper_dir = settings.WALLPAPER_DIR
+    os.makedirs(wallpaper_dir, exist_ok=True)
+
+    if not prompt:
+        # 根据当前月份选择季节主题
+        month = date.today().month
+        if month in (3, 4, 5):
+            theme_idx = 0  # 春
+        elif month in (6, 7, 8):
+            theme_idx = random.choice([1, 6])  # 夏/云海
+        elif month in (9, 10, 11):
+            theme_idx = 2  # 秋
+        else:
+            theme_idx = random.choice([3, 4])  # 冬/星空
+        # 30% 概率使用随机主题增加多样性
+        if random.random() < 0.3:
+            theme_idx = random.randint(0, len(_WALLPAPER_THEMES) - 1)
+        prompt = _WALLPAPER_THEMES[theme_idx]
+
+    full_prompt = f"高清风景壁纸，{prompt}，专业摄影，超高清画质，色彩丰富，构图优美"
+    logger.info("AI 壁纸生成 prompt: %s", full_prompt)
+
+    output = _run_bl([
+        "image", "generate",
+        "--prompt", full_prompt,
+        "--size", "1920*1080",
+        "--out-dir", wallpaper_dir,
+        "--out-prefix", "ai-wallpaper",
+        "--output", "json",
+    ], timeout=120)
+
+    if not output:
+        logger.error("AI 壁纸生成返回空")
+        return None
+
+    try:
+        result = json.loads(output)
+        saved_files = result.get("saved", [])
+        if saved_files:
+            # 返回文件名（不含路径）
+            filename = os.path.basename(saved_files[0])
+            logger.info("AI 壁纸已生成: %s", filename)
+            return filename
+    except (json.JSONDecodeError, TypeError, IndexError) as e:
+        logger.error("AI 壁纸生成输出解析失败: %s, output: %s", e, output[:500])
+
+    return None

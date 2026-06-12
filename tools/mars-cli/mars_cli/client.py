@@ -659,3 +659,29 @@ class MarsClient:
         self._ensure_auth()
         resp = self.session.post(self._url("/api/dashboard/refresh-wallpaper"), timeout=30)
         return self._handle_response(resp)
+
+    def generate_wallpaper(self, prompt: Optional[str] = None) -> Dict[str, Any]:
+        """POST /api/dashboard/generate-wallpaper — AI 生成壁纸并推送给所有已连接 Dashboard。"""
+        self._ensure_auth()
+        body: Dict[str, Any] = {}
+        if prompt:
+            body["prompt"] = prompt
+        # AI 图片生成耗时较长，超时设置 180 秒
+        resp = self.session.post(self._url("/api/dashboard/generate-wallpaper"), json=body, timeout=180)
+        return self._handle_response(resp)
+
+    def list_wallpapers(self) -> Dict[str, Any]:
+        """GET /api/dashboard/wallpapers — 列出所有已生成的 AI 壁纸。"""
+        self._ensure_auth()
+        resp = self.session.get(self._url("/api/dashboard/wallpapers"), timeout=15)
+        return self._handle_response(resp)
+
+    def set_wallpaper(self, filename: str) -> Dict[str, Any]:
+        """POST /api/dashboard/set-wallpaper — 设置指定壁纸并推送给所有已连接 Dashboard。"""
+        self._ensure_auth()
+        resp = self.session.post(
+            self._url("/api/dashboard/set-wallpaper"),
+            json={"filename": filename},
+            timeout=15,
+        )
+        return self._handle_response(resp)

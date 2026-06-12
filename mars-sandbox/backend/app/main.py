@@ -17,6 +17,10 @@ from .routers import auth, pages, tags, scan, nodes, commands, videos, meals, dr
 from .scanner import scan_directories
 from .ws.router import router as ws_router
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
 logger = logging.getLogger(__name__)
 
 # Frontend dist directory
@@ -165,6 +169,11 @@ if os.path.isdir(thumb_dir):
 meal_dir = settings.MEAL_PHOTO_DIR
 if os.path.isdir(meal_dir):
     app.mount("/meal-photos", StaticFiles(directory=meal_dir), name="meal-photos")
+
+# AI-generated wallpapers
+wallpaper_dir = settings.WALLPAPER_DIR
+os.makedirs(wallpaper_dir, exist_ok=True)
+app.mount("/wallpapers", StaticFiles(directory=wallpaper_dir), name="wallpapers")
 
 
 # Frontend assets (JS/CSS bundles referenced by index.html at /assets/)

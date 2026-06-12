@@ -243,11 +243,17 @@ mars-cli scan status
 
 ```bash
 mars-cli dashboard refresh-wallpaper
+mars-cli dashboard generate-wallpaper [--prompt '自定义描述']
+mars-cli dashboard list-wallpapers
+mars-cli dashboard set-wallpaper <filename>
 ```
 
 | 命令 | 说明 |
 |------|------|
 | `dashboard refresh-wallpaper` | 从 Bing + Pexels 壁纸池（~23张）随机刷新看板壁纸，推送到所有已连接的 Dashboard |
+| `dashboard generate-wallpaper` | AI 生成高清风景壁纸并推送到所有已连接的 Dashboard（耗时约 30-90 秒） |
+| `dashboard list-wallpapers` | 列出所有已生成的 AI 壁纸，显示文件名、URL、大小、创建时间 |
+| `dashboard set-wallpaper <filename>` | 设置指定壁纸并推送到所有已连接的 Dashboard |
 
 ## 常见使用场景
 
@@ -304,9 +310,22 @@ mars-cli videos progress 12 --mastered 1
 ```bash
 # 从 Bing 每日壁纸 + Pexels 随机风景壁纸池中刷新，每次不重复
 mars-cli dashboard refresh-wallpaper
+
+# AI 生成高清风景壁纸，根据季节自动选择主题
+mars-cli dashboard generate-wallpaper
+
+# AI 生成自定义主题壁纸
+mars-cli dashboard generate-wallpaper --prompt '星空下的雪山，宁静壮观'
+
+# 列出所有已生成的 AI 壁纸
+mars-cli dashboard list-wallpapers
+
+# 设置指定壁纸为看板背景（文件名从 list-wallpapers 获取）
+mars-cli dashboard set-wallpaper ai-wallpaper_高清风景壁纸,星空下的雪山,宁静壮观,_1781234567890.png
 ```
 
-壁纸来源：Bing 每日精选（8张）+ Pexels 随机风景（15张，8种主题轮换），合计约23张可选。
+壁纸来源：Bing 每日精选（8张）+ Pexels 随机风景（15张，8种主题轮换）+ AI 生成（按季节主题自动选择，支持自定义提示词）。
+AI 生成的壁纸持久保存在 OSS 目录 `/mnt/oss-sybuddy/data/wallpapers/`，可随时切换。
 
 ## 输出格式
 
