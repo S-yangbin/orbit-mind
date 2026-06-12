@@ -86,24 +86,8 @@ def _migrate_db():
 
 
 def _seed_activity_types():
-    """Insert preset activity types if table is empty."""
-    from .models import ActivityType
-    db = SessionLocal()
-    try:
-        count = db.query(ActivityType).count()
-        if count == 0:
-            presets = [
-                ActivityType(name="做作业", icon="\U0001f4dd", category="homework", color="#4A90D9", is_preset=1, sort_order=0),
-                ActivityType(name="读绘本", icon="\U0001f4d6", category="reading", color="#7CB342", is_preset=1, sort_order=1),
-                ActivityType(name="运动", icon="\U0001f3c0", category="sports", color="#FF7043", is_preset=1, sort_order=2),
-                ActivityType(name="才艺", icon="\u265f\ufe0f", category="arts", color="#AB47BC", is_preset=1, sort_order=3),
-                ActivityType(name="自由玩耍", icon="\U0001f3ae", category="freeplay", color="#FFB74D", is_preset=1, sort_order=4),
-            ]
-            db.add_all(presets)
-            db.commit()
-            logger.info("Seeded %d preset activity types.", len(presets))
-    finally:
-        db.close()
+    """No longer seed preset activity types — users define their own."""
+    pass
 
 
 def _start_background_scan():

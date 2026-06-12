@@ -97,12 +97,10 @@ async def delete_activity_type(
     db: Session = Depends(get_db),
     _=Depends(require_auth),
 ):
-    """删除自定义活动类型（预设不可删）"""
+    """删除活动类型"""
     at = db.query(ActivityType).filter(ActivityType.id == type_id).first()
     if not at:
         raise HTTPException(status_code=404, detail="活动类型不存在")
-    if at.is_preset:
-        raise HTTPException(status_code=400, detail="预设活动类型不可删除")
 
     db.delete(at)
     db.commit()

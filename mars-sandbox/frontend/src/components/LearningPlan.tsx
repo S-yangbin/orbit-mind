@@ -213,11 +213,7 @@ export function LearningPlan() {
   };
 
   // Delete activity type
-  const handleDeleteType = async (id: number, isPreset: number) => {
-    if (isPreset) {
-      message.warning("预设类型不可删除");
-      return;
-    }
+  const handleDeleteType = async (id: number) => {
     try {
       await deleteActivityType(id);
       message.success("已删除");
@@ -263,45 +259,98 @@ export function LearningPlan() {
   return (
     <div style={{ maxWidth: 900, margin: "0 auto", padding: "24px 16px" }}>
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
-        <Title level={3} style={{ margin: 0 }}>📚 学习计划</Title>
-        <Space>
-          <Button icon={<SettingOutlined />} onClick={() => setShowTypeModal(true)}>活动类型</Button>
-          <Button icon={<EditOutlined />} onClick={openTemplateEditor}>周模板</Button>
+      <div style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        marginBottom: 28,
+        padding: "20px 24px",
+        background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+        borderRadius: 16,
+        boxShadow: "0 4px 20px rgba(102, 126, 234, 0.3)",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <span style={{ fontSize: 32 }}>📚</span>
+          <Title level={3} style={{ margin: 0, color: "#fff", textShadow: "0 1px 4px rgba(0,0,0,0.15)" }}>学习计划</Title>
+        </div>
+        <Space size={12}>
+          <Button
+            icon={<SettingOutlined />}
+            onClick={() => setShowTypeModal(true)}
+            style={{ borderRadius: 8, background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", color: "#fff", backdropFilter: "blur(4px)" }}
+          >
+            活动类型
+          </Button>
+          <Button
+            icon={<EditOutlined />}
+            onClick={openTemplateEditor}
+            style={{ borderRadius: 8, background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", color: "#fff", backdropFilter: "blur(4px)" }}
+          >
+            周模板
+          </Button>
         </Space>
       </div>
 
       {/* Date navigation */}
-      <Card style={{ marginBottom: 16 }}>
+      <Card style={{
+        marginBottom: 20,
+        borderRadius: 14,
+        border: "none",
+        boxShadow: "0 2px 12px rgba(0,0,0,0.06)",
+      }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <Button icon={<LeftOutlined />} onClick={() => navigateDate(-1)} />
-          <div style={{ textAlign: "center", display: "flex", alignItems: "center", gap: 8 }}>
+          <Button
+            icon={<LeftOutlined />}
+            onClick={() => navigateDate(-1)}
+            shape="circle"
+            style={{ boxShadow: "0 2px 6px rgba(0,0,0,0.08)" }}
+          />
+          <div style={{ textAlign: "center", display: "flex", alignItems: "center", gap: 12 }}>
             <DatePicker
               value={dayjs(selectedDate)}
               onChange={(d) => d && setSelectedDate(d.format("YYYY-MM-DD"))}
-              style={{ width: 140 }}
+              style={{ width: 140, borderRadius: 8 }}
               allowClear={false}
               size="small"
             />
-            <div style={{ fontSize: 20, fontWeight: 700, color: "#1e293b" }}>{dateDisplay}</div>
-            {isToday && <Tag color="blue" style={{ marginTop: 4 }}>今天</Tag>}
+            <div style={{ fontSize: 22, fontWeight: 700, color: "#1e293b", letterSpacing: 0.5 }}>{dateDisplay}</div>
+            {isToday && (
+              <Tag color="blue" style={{ borderRadius: 10, padding: "2px 10px", fontWeight: 600, fontSize: 13 }}>今天</Tag>
+            )}
           </div>
-          <Button icon={<RightOutlined />} onClick={() => navigateDate(1)} />
-          {!isToday && (
-            <Button type="link" onClick={goToday}>回到今天</Button>
-          )}
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Button
+              icon={<RightOutlined />}
+              onClick={() => navigateDate(1)}
+              shape="circle"
+              style={{ boxShadow: "0 2px 6px rgba(0,0,0,0.08)" }}
+            />
+            {!isToday && (
+              <Button type="link" onClick={goToday} style={{ borderRadius: 8 }}>回到今天</Button>
+            )}
+          </div>
         </div>
       </Card>
 
       {/* Daily schedule items */}
       <Card
-        title="今日计划"
+        title={<span style={{ fontSize: 17, fontWeight: 700 }}>今日计划</span>}
         extra={
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setShowAddModal(true)}>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => setShowAddModal(true)}
+            style={{ borderRadius: 8, boxShadow: "0 2px 8px rgba(102, 126, 234, 0.3)" }}
+          >
             添加活动
           </Button>
         }
-        style={{ marginBottom: 24 }}
+        style={{
+          marginBottom: 24,
+          borderRadius: 14,
+          border: "none",
+          boxShadow: "0 2px 12px rgba(0,0,0,0.06)",
+        }}
       >
         <Spin spinning={loading}>
           {dailyItems.length === 0 ? (
@@ -317,26 +366,33 @@ export function LearningPlan() {
                     style={{
                       display: "flex",
                       alignItems: "center",
-                      gap: 12,
-                      padding: "12px 16px",
-                      background: isCompleted ? "#f0fdf4" : "#fafafa",
-                      borderRadius: 12,
-                      border: `1.5px solid ${isCompleted ? "#86efac" : "#e2e8f0"}`,
-                      transition: "all 0.2s",
+                      gap: 14,
+                      padding: "14px 18px",
+                      background: isCompleted
+                        ? "linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%)"
+                        : "linear-gradient(135deg, #fafbfc 0%, #f8f9fb 100%)",
+                      borderRadius: 14,
+                      border: `1.5px solid ${isCompleted ? "#86efac" : "#e8ecf1"}`,
+                      transition: "all 0.25s ease",
+                      boxShadow: isCompleted
+                        ? "0 2px 8px rgba(34, 197, 94, 0.08)"
+                        : "0 1px 4px rgba(0,0,0,0.04)",
                     }}
                   >
                     {/* Icon */}
                     <div
                       style={{
-                        fontSize: 28,
-                        width: 48,
-                        height: 48,
+                        fontSize: 30,
+                        width: 52,
+                        height: 52,
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        borderRadius: 12,
-                        background: at?.color ? `${at.color}22` : "#f1f5f9",
+                        borderRadius: 14,
+                        background: at?.color ? `${at.color}18` : "#f1f5f9",
+                        border: at?.color ? `1.5px solid ${at.color}25` : "1.5px solid #e8ecf1",
                         flexShrink: 0,
+                        boxShadow: "0 2px 6px rgba(0,0,0,0.04)",
                       }}
                     >
                       {at?.icon || "📋"}
@@ -452,10 +508,10 @@ export function LearningPlan() {
               <Tag
                 key={t.id}
                 color={t.color}
-                closable={t.is_preset === 0}
+                closable
                 onClose={(e) => {
                   e.preventDefault();
-                  handleDeleteType(t.id, t.is_preset);
+                  handleDeleteType(t.id);
                 }}
                 style={{ padding: "4px 10px", fontSize: 14 }}
               >
@@ -468,7 +524,7 @@ export function LearningPlan() {
         <Divider style={{ margin: "16px 0" }} />
 
         <Text strong>新增自定义活动类型：</Text>
-        <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
           <Select
             value={newTypeIcon}
             onChange={setNewTypeIcon}
@@ -481,12 +537,13 @@ export function LearningPlan() {
             placeholder="活动名称"
             style={{ width: 150 }}
           />
-          <ColorPicker
-            value={newTypeColor}
-            onChange={(_, hex) => setNewTypeColor(hex)}
-            showText
-            size="small"
-          />
+          <div style={{ display: "flex", alignItems: "center" }}>
+            <ColorPicker
+              value={newTypeColor}
+              onChange={(_, hex) => setNewTypeColor(hex)}
+              showText
+            />
+          </div>
           <Select
             value={newTypeCategory}
             onChange={setNewTypeCategory}
@@ -500,7 +557,7 @@ export function LearningPlan() {
               { label: "自定义", value: "custom" },
             ]}
           />
-          <Button type="primary" icon={<PlusOutlined />} onClick={handleCreateType}>添加</Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={handleCreateType} style={{ borderRadius: 8 }}>添加</Button>
         </div>
       </Modal>
 
