@@ -4,7 +4,6 @@ import uuid
 import logging
 import mimetypes
 from pathlib import Path
-from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, Form, Query
@@ -13,6 +12,7 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import desc
 
 from ..config import settings
+from ..utils.timezone import beijing_now
 from ..database import get_db
 from ..auth import get_current_user
 from ..models import Video, VideoSegment, SegmentNote, SegmentProgress
@@ -424,7 +424,7 @@ async def update_progress(
     if data.last_practiced_at is not None:
         progress.last_practiced_at = data.last_practiced_at
     else:
-        progress.last_practiced_at = datetime.utcnow()
+        progress.last_practiced_at = beijing_now()
 
     db.commit()
     db.refresh(progress)

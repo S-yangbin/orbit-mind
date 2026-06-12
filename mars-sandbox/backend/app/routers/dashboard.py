@@ -3,8 +3,9 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
-from ..database import SessionLocal
+from ..database import get_db
 from ..dependencies import require_auth_or_api_key
 from ..ws.dashboard import (
     refresh_wallpaper_and_broadcast,
@@ -92,6 +93,7 @@ class BroadcastRequest(BaseModel):
 @router.post("/broadcast")
 async def broadcast(
     body: BroadcastRequest,
+    db: Session = Depends(get_db),
     _user=Depends(require_auth_or_api_key),
 ):
     """语音播报接口：根据数据源自动查询并格式化为自然语言，通过 WS 广播到所有 Dashboard。
@@ -109,19 +111,14 @@ async def broadcast(
             raise HTTPException(status_code=400, detail="source=text 时必须提供 text 参数")
         tts_text = body.text
     else:
-        # 从数据库查询并格式化
-        db = SessionLocal()
-        try:
-            if body.source == "messages":
-                tts_text = format_board_messages(db)
-            elif body.source == "schedule":
-                tts_text = format_today_schedule(db)
-            elif body.source == "meals":
-                tts_text = format_today_meals(db)
-            else:
-                raise HTTPException(status_code=400, detail=f"未知的 source: {body.source}")
-        finally:
-            db.close()
+        if body.source == "messages":
+            tts_text = format_board_messages(db)
+        elif body.source == "schedule":
+            tts_text = format_today_schedule(db)
+        elif body.source == "meals":
+            tts_text = format_today_meals(db)
+        else:
+            raise HTTPException(status_code=400, detail=f"未知的 source: {body.source}")
 
     await broadcast_tts(tts_text, body.page)
     return {"ok": True, "text": tts_text}

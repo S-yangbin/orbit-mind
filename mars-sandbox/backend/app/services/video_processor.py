@@ -2,7 +2,6 @@
 import json
 import logging
 import os
-import re
 import subprocess
 import threading
 from pathlib import Path
@@ -11,6 +10,7 @@ from typing import Optional
 from ..config import settings
 from ..database import SessionLocal
 from ..models import Video, VideoSegment, SegmentProgress
+from ..utils.json_helpers import extract_json_array
 
 logger = logging.getLogger(__name__)
 
@@ -176,34 +176,29 @@ Output ONLY the JSON array, no other text."""
         if isinstance(parsed, dict) and "choices" in parsed:
             # OpenAI-compatible format
             content = parsed["choices"][0]["message"]["content"]
-            return _extract_json_array(content)
+            result = extract_json_array(content)
+            if result is None:
+                logger.error("Could not extract JSON array from LLM output: %s", content[:500])
+                raise ValueError("Failed to parse LLM segment analysis output")
+            return result
         elif isinstance(parsed, list):
             return parsed
         elif isinstance(parsed, dict) and "content" in parsed:
-            return _extract_json_array(parsed["content"])
+            return _extract_and_validate(parsed["content"])
     except json.JSONDecodeError:
         pass
 
     # Try to extract JSON array from text
-    return _extract_json_array(output)
+    return _extract_and_validate(output)
 
 
-def _extract_json_array(text: str) -> list[dict]:
-    """Extract a JSON array from text that may contain markdown fences or extra content."""
-    # Remove markdown code fences
-    text = re.sub(r'```(?:json)?\s*', '', text)
-
-    # Find the first [ and last ]
-    start = text.find('[')
-    end = text.rfind(']')
-    if start != -1 and end != -1 and end > start:
-        try:
-            return json.loads(text[start:end + 1])
-        except json.JSONDecodeError:
-            pass
-
-    logger.error("Could not extract JSON array from LLM output: %s", text[:500])
-    raise ValueError("Failed to parse LLM segment analysis output")
+def _extract_and_validate(text: str) -> list[dict]:
+    """Extract JSON array using shared utility, raise ValueError on failure."""
+    result = extract_json_array(text)
+    if result is None:
+        logger.error("Could not extract JSON array from LLM output: %s", text[:500])
+        raise ValueError("Failed to parse LLM segment analysis output")
+    return result
 
 
 def process_video(video_id: int):

@@ -1,4 +1,5 @@
 """FastAPI dependency injections."""
+import hmac
 from typing import Optional
 from fastapi import Depends, HTTPException, Header, Request, status
 from .auth import get_current_user
@@ -24,6 +25,19 @@ async def require_auth(
 current_user = require_auth
 
 
+def verify_node_api_key(x_api_key: str = Header(...)):
+    """Verify X-API-Key header using timing-safe comparison.
+
+    Used by node-facing endpoints (heartbeat, commands) to authenticate
+    home-agent and CLI clients.
+    """
+    if not x_api_key or not hmac.compare_digest(x_api_key, settings.NODE_API_KEY):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid API key",
+        )
+
+
 async def require_auth_or_api_key(
     request: Request,
     x_api_key: Optional[str] = Header(None),
@@ -38,8 +52,8 @@ async def require_auth_or_api_key(
     if user is not None:
         return user
 
-    # 方式2: X-API-Key 认证
-    if x_api_key and x_api_key == settings.NODE_API_KEY:
+    # 方式2: X-API-Key 认证 (timing-safe)
+    if x_api_key and hmac.compare_digest(x_api_key, settings.NODE_API_KEY):
         return {"username": "api-client"}
 
     raise HTTPException(

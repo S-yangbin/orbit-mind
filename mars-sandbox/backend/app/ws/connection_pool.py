@@ -73,15 +73,16 @@ class ConnectionPool:
     async def cleanup_stale_nodes(self, stale_seconds: float = 180.0):
         """清理超时的节点连接"""
         stale_nodes = await self.get_stale_nodes(stale_seconds)
-        
+
         for node_id in stale_nodes:
             logger.warning("节点 %s 心跳超时(%ds),关闭连接", node_id, stale_seconds)
-            await self.unregister(node_id)
-            
-            # 关闭WebSocket连接
-            if node_id in self._connections:
+            # Get connection reference before unregistering to avoid use-after-delete
+            async with self._lock:
+                ws = self._connections.pop(node_id, None)
+                self._heartbeats.pop(node_id, None)
+            if ws:
                 try:
-                    await self._connections[node_id].close()
+                    await ws.close()
                 except Exception as e:
                     logger.error("关闭超时节点 %s 连接失败: %s", node_id, str(e))
     

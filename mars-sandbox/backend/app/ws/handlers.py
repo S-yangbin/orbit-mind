@@ -6,8 +6,6 @@ WebSocket handler for home-agent connections
 import asyncio
 import json
 import logging
-import time
-from datetime import datetime, timezone, timedelta
 from typing import Dict, Any
 from starlette.websockets import WebSocketDisconnect
 from websockets.asyncio.server import ServerConnection
@@ -15,13 +13,11 @@ from websockets.asyncio.server import ServerConnection
 from ..config import settings
 from ..database import SessionLocal
 from ..models import Node
-from ..routers.commands import cache_result
+from ..services.command_result import cache_result
 from ..utils.timezone import beijing_now
 from .connection_pool import pool
 
 logger = logging.getLogger(__name__)
-
-# 北京时间时区已在 utils.timezone 中定义
 
 
 async def handle_websocket_connection(websocket: ServerConnection, node_id: str, secret: str):
@@ -78,7 +74,7 @@ async def handle_websocket_connection(websocket: ServerConnection, node_id: str,
         await pool.register(node_id, websocket)
         
         # 更新数据库状态
-        _update_node_status(node_id, "online")
+        await asyncio.to_thread(_update_node_status, node_id, "online")
         
         # 主循环:处理消息
         while True:
@@ -113,7 +109,7 @@ async def handle_websocket_connection(websocket: ServerConnection, node_id: str,
     finally:
         # 连接关闭,从连接池移除
         await pool.unregister(node_id)
-        _update_node_status(node_id, "offline")
+        await asyncio.to_thread(_update_node_status, node_id, "offline")
         logger.info("节点 %s WebSocket连接关闭", node_id)
 
 
@@ -137,8 +133,8 @@ async def _handle_register(websocket: ServerConnection, node_id: str, data: Dict
 async def _handle_heartbeat(node_id: str, data: Dict[str, Any]):
     """处理心跳消息"""
     await pool.update_heartbeat(node_id)
-    # 同步更新数据库中的 last_heartbeat_at，供前端 HTTP API 查询
-    _update_node_heartbeat(node_id)
+    # 同步更新数据库中的 last_heartbeat_at，供前端 HTTP API 查询（移到线程池避免阻塞事件循环）
+    await asyncio.to_thread(_update_node_heartbeat, node_id)
     # 注意: home-agent 端不要求必须收到 heartbeat_ack
 
 

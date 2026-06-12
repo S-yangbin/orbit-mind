@@ -1,7 +1,7 @@
 """Learning plan (children's daily schedule) CRUD routes."""
 
 import asyncio
-from datetime import date, datetime
+from datetime import date
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload
@@ -14,6 +14,7 @@ from ..schemas import (
     WeeklyTemplateResponse, WeeklyTemplateCreate, WeeklyTemplateDayItem,
     DailyScheduleResponse, DailyScheduleCreate, DailyScheduleUpdate,
 )
+from ..utils.timezone import beijing_now
 from ..ws.dashboard import broadcast_to_dashboards, build_full_dashboard_data
 
 router = APIRouter(prefix="/api/schedule", tags=["schedule"])
@@ -313,7 +314,7 @@ async def update_daily_item(
 
     if payload.completed is not None:
         item.completed = payload.completed
-        item.completed_at = datetime.utcnow() if payload.completed == 1 else None
+        item.completed_at = beijing_now() if payload.completed == 1 else None
     if payload.completion_note is not None:
         item.completion_note = payload.completion_note
 

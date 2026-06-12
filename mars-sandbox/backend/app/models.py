@@ -1,11 +1,12 @@
 """SQLAlchemy ORM models."""
-from datetime import datetime, date
+from datetime import date
 from sqlalchemy import (
     Column, Integer, String, Text, BigInteger, DateTime, Date,
     ForeignKey, SmallInteger, UniqueConstraint
 )
 from sqlalchemy.orm import relationship
 from .database import Base
+from .utils.timezone import beijing_now
 
 
 class Page(Base):
@@ -21,10 +22,10 @@ class Page(Base):
     is_customized = Column(SmallInteger, nullable=False, default=0)
     custom_title = Column(String(255), nullable=True)
     custom_description = Column(Text, nullable=True)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=beijing_now)
+    updated_at = Column(DateTime, nullable=False, default=beijing_now, onupdate=beijing_now)
     category = Column(String(32), nullable=False, default="work", server_default="work", index=True)
-    synced_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    synced_at = Column(DateTime, nullable=False, default=beijing_now)
     scanned_title = Column(String(255), nullable=True)
     scanned_description = Column(Text, nullable=True)
 
@@ -76,8 +77,8 @@ class Node(Base):
     status = Column(String(16), nullable=False, default="offline")  # online / offline
     last_heartbeat_at = Column(DateTime, nullable=True)
     uptime_seconds = Column(BigInteger, nullable=False, default=0)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=beijing_now)
+    updated_at = Column(DateTime, nullable=False, default=beijing_now, onupdate=beijing_now)
 
 
 class Video(Base):
@@ -93,8 +94,8 @@ class Video(Base):
     status = Column(String(32), nullable=False, default="pending")  # pending / processing / ready / error
     transcription_json = Column(Text, nullable=True)  # full ASR result JSON
     error_message = Column(Text, nullable=True)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=beijing_now)
+    updated_at = Column(DateTime, nullable=False, default=beijing_now, onupdate=beijing_now)
 
     segments = relationship("VideoSegment", back_populates="video", cascade="all, delete-orphan",
                             order_by="VideoSegment.start_time")
@@ -112,8 +113,8 @@ class VideoSegment(Base):
     end_time = Column(Integer, nullable=False)  # seconds
     transcription = Column(Text, nullable=True)  # subtitle text for this segment
     sort_order = Column(Integer, nullable=False, default=0)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=beijing_now)
+    updated_at = Column(DateTime, nullable=False, default=beijing_now, onupdate=beijing_now)
 
     video = relationship("Video", back_populates="segments")
     notes = relationship("SegmentNote", back_populates="segment", cascade="all, delete-orphan",
@@ -130,8 +131,8 @@ class SegmentNote(Base):
     segment_id = Column(Integer, ForeignKey("video_segments.id", ondelete="CASCADE"), nullable=False, index=True)
     content = Column(Text, nullable=False)
     note_path = Column(String(1024), nullable=True)  # OSS markdown file path
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=beijing_now)
+    updated_at = Column(DateTime, nullable=False, default=beijing_now, onupdate=beijing_now)
 
     segment = relationship("VideoSegment", back_populates="notes")
 
@@ -145,8 +146,8 @@ class SegmentProgress(Base):
     mastered = Column(SmallInteger, nullable=False, default=0)  # 0=not mastered, 1=mastered
     loop_count = Column(Integer, nullable=False, default=0)
     last_practiced_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=beijing_now)
+    updated_at = Column(DateTime, nullable=False, default=beijing_now, onupdate=beijing_now)
 
     segment = relationship("VideoSegment", back_populates="progress")
 
@@ -166,8 +167,8 @@ class FamilyMember(Base):
     preferences = Column(Text, nullable=True)  # JSON: {"likes": [...], "dislikes": [...], "note": "..."}
     allergies = Column(Text, nullable=True)  # JSON: ["peanut", ...]
     board_color = Column(String(16), nullable=True)  # hex color for board messages
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=beijing_now)
+    updated_at = Column(DateTime, nullable=False, default=beijing_now, onupdate=beijing_now)
 
 
 class Dish(Base):
@@ -182,7 +183,7 @@ class Dish(Base):
     tags = Column(Text, nullable=True)  # JSON: ["mild", "kid-friendly", ...]
     origin = Column(String(20), nullable=False, default="ai")  # ai / photo / manual
     photo_count = Column(Integer, nullable=False, default=0)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=beijing_now)
 
 
 class MealPlan(Base):
@@ -192,8 +193,8 @@ class MealPlan(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     week_start_date = Column(Date, nullable=False, unique=True, index=True)
     status = Column(String(16), nullable=False, default="draft")  # draft / confirmed
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=beijing_now)
+    updated_at = Column(DateTime, nullable=False, default=beijing_now, onupdate=beijing_now)
 
     items = relationship("MealPlanItem", back_populates="plan", cascade="all, delete-orphan",
                          order_by="MealPlanItem.date, MealPlanItem.meal_type, MealPlanItem.sort_order")
@@ -213,7 +214,7 @@ class MealPlanItem(Base):
     dish_id = Column(Integer, ForeignKey("dishes.id", ondelete="CASCADE"), nullable=False)
     sort_order = Column(Integer, nullable=False, default=0)
     is_manual = Column(SmallInteger, nullable=False, default=0)  # 0=AI, 1=manual
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=beijing_now)
 
     plan = relationship("MealPlan", back_populates="items")
     dish = relationship("Dish")
@@ -233,7 +234,7 @@ class MealLog(Base):
     rating = Column(SmallInteger, nullable=True)  # 1-5
     note = Column(Text, nullable=True)
     liked_by = Column(Text, nullable=True)  # JSON: [member_id, ...]
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=beijing_now)
 
 
 class DishPreference(Base):
@@ -245,8 +246,8 @@ class DishPreference(Base):
     member_id = Column(Integer, ForeignKey("family_members.id", ondelete="CASCADE"), nullable=False, index=True)
     like_count = Column(Integer, nullable=False, default=0)  # number of times liked
     last_liked_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=beijing_now)
+    updated_at = Column(DateTime, nullable=False, default=beijing_now, onupdate=beijing_now)
 
     __table_args__ = (
         UniqueConstraint("dish_id", "member_id", name="uq_dish_member_preference"),
@@ -269,7 +270,7 @@ class DriveFile(Base):
     uploaded_by = Column(String(64), nullable=False, default="")
     is_dir = Column(SmallInteger, nullable=False, default=0, index=True)  # 0=file, 1=directory
     parent_id = Column(Integer, ForeignKey("drive_files.id", ondelete="CASCADE"), nullable=True, index=True)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=beijing_now)
 
 
 # ============================================================
@@ -287,8 +288,8 @@ class BoardMessage(Base):
     pinned = Column(SmallInteger, nullable=False, default=0)
     expires_at = Column(Date, nullable=True)  # 过期日期，NULL 表示永不过期
     acknowledged_by = Column(Text, nullable=True)  # JSON: [member_id, ...] 已确认的家庭成员
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=beijing_now)
+    updated_at = Column(DateTime, nullable=False, default=beijing_now, onupdate=beijing_now)
 
 
 # ============================================================
@@ -307,7 +308,7 @@ class ActivityType(Base):
     is_preset = Column(SmallInteger, nullable=False, default=0)  # 1=preset, 0=custom
     sort_order = Column(Integer, nullable=False, default=0)
     child_id = Column(Integer, nullable=True)  # reserved for multi-child support
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=beijing_now)
 
 
 class WeeklyTemplate(Base):
@@ -318,8 +319,8 @@ class WeeklyTemplate(Base):
     name = Column(String(50), nullable=False, default="默认周计划")
     child_id = Column(Integer, nullable=True)  # reserved for multi-child support
     is_active = Column(SmallInteger, nullable=False, default=1)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=beijing_now)
+    updated_at = Column(DateTime, nullable=False, default=beijing_now, onupdate=beijing_now)
 
     days = relationship("WeeklyTemplateDay", back_populates="template", cascade="all, delete-orphan",
                          order_by="WeeklyTemplateDay.day_of_week, WeeklyTemplateDay.sort_order")
@@ -352,6 +353,6 @@ class DailySchedule(Base):
     completion_note = Column(Text, nullable=True)  # note on completion
     sort_order = Column(Integer, nullable=False, default=0)
     is_override = Column(SmallInteger, nullable=False, default=0)  # 1=manually adjusted, 0=from template
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=beijing_now)
 
     activity_type = relationship("ActivityType")

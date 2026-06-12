@@ -304,7 +304,12 @@ async def delete_file(
 
     # Delete from DB
     db.delete(drive_file)
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.error("DB commit failed after OSS delete — OSS/DB inconsistent for file_id=%s oss_key=%s", file_id, oss_key)
+        raise HTTPException(status_code=500, detail="Failed to delete file record (OSS object already deleted)")
 
     logger.info("Drive file deleted: id=%s filename=%s", file_id, drive_file.filename)
     return {"message": "File deleted", "id": file_id}
@@ -393,7 +398,12 @@ async def delete_folder(
 
     # DB cascade delete handles children
     db.delete(folder)
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.error("DB commit failed after OSS delete — OSS/DB inconsistent for folder_id=%s", folder_id)
+        raise HTTPException(status_code=500, detail="Failed to delete folder record (OSS objects already deleted)")
 
     logger.info("Drive folder deleted: id=%s name=%s (children=%d)", folder_id, folder.filename, len(children))
     return {"message": "Folder deleted", "id": folder_id, "children_deleted": len(children)}
@@ -454,7 +464,12 @@ async def move_file(
 
     item.oss_key = new_oss_key
     item.parent_id = move_data.target_parent_id
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.error("DB commit failed after OSS move — OSS/DB inconsistent for file_id=%s", file_id)
+        raise HTTPException(status_code=500, detail="Failed to update file record after OSS move")
     db.refresh(item)
 
     logger.info("Drive item moved: id=%s to parent=%s", file_id, move_data.target_parent_id)
@@ -536,7 +551,12 @@ async def copy_file(
         parent_id=copy_data.target_parent_id,
     )
     db.add(new_file)
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.error("DB commit failed after OSS copy — orphaned OSS object at %s", new_oss_key)
+        raise HTTPException(status_code=500, detail="Failed to save copied file record")
     db.refresh(new_file)
 
     logger.info("Drive file copied: id=%s -> new_id=%s", file_id, new_file.id)

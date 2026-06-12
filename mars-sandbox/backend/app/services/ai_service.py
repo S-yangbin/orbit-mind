@@ -2,12 +2,12 @@
 import json
 import logging
 import os
-import re
 import subprocess
 from datetime import date, timedelta
 from typing import List, Dict, Any, Optional
 
 from ..config import settings
+from ..utils.json_helpers import extract_json_array, extract_json_object
 
 logger = logging.getLogger(__name__)
 
@@ -40,47 +40,6 @@ def _run_bl(args: List[str], timeout: int = 120) -> Optional[str]:
     except Exception as e:
         logger.error("bl command error: %s", e)
         return None
-
-
-def _extract_json_array(text: str) -> Optional[List]:
-    """Extract a JSON array from text (handles markdown code blocks etc)."""
-    if not text:
-        return None
-    # Try to find JSON array
-    match = re.search(r'\[[\s\S]*?\]', text)
-    if match:
-        try:
-            return json.loads(match.group())
-        except json.JSONDecodeError:
-            pass
-    # Try parsing entire text
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        return None
-
-
-def _extract_json_object(text: str) -> Optional[Dict]:
-    """Extract a JSON object from text."""
-    if not text:
-        return None
-    # Try to find JSON object
-    # Use a more robust approach - find the outermost braces
-    start = text.find('{')
-    if start == -1:
-        return None
-    depth = 0
-    for i in range(start, len(text)):
-        if text[i] == '{':
-            depth += 1
-        elif text[i] == '}':
-            depth -= 1
-            if depth == 0:
-                try:
-                    return json.loads(text[start:i + 1])
-                except json.JSONDecodeError:
-                    return None
-    return None
 
 
 def recognize_dishes(image_path: str) -> List[Dict[str, Any]]:
@@ -125,7 +84,7 @@ def recognize_dishes(image_path: str) -> List[Dict[str, Any]]:
 
     logger.info("Dish recognition extracted text: %s", text[:500])
 
-    dishes = _extract_json_array(text)
+    dishes = extract_json_array(text)
     if dishes is None:
         logger.warning("Failed to parse dish recognition output: %s", output[:500])
         return []
@@ -276,7 +235,7 @@ def generate_monthly_weekend_plan(
     except (json.JSONDecodeError, TypeError, IndexError, KeyError):
         pass
 
-    plan = _extract_json_object(text)
+    plan = extract_json_object(text)
     if plan is None or "days" not in plan:
         logger.error("Failed to parse monthly weekend plan output: %s", text[:300])
         return None

@@ -1,30 +1,16 @@
 """Board messages CRUD routes."""
-import asyncio
-import json
-from datetime import date
-from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..dependencies import require_auth
+from ..utils.json_helpers import parse_acknowledged_by
 from ..models import BoardMessage
 from ..schemas import BoardMessageCreate, BoardMessageUpdate, BoardMessageResponse, BoardMessageListResponse
 from ..ws.dashboard import broadcast_to_dashboards, build_full_dashboard_data
 
 router = APIRouter(prefix="/api/board", tags=["board"])
 
-
-def _parse_acknowledged_by(msg: BoardMessage) -> Optional[List[int]]:
-    """解析 acknowledged_by JSON 字段"""
-    if msg.acknowledged_by is None:
-        return None
-    if isinstance(msg.acknowledged_by, list):
-        return msg.acknowledged_by
-    try:
-        return json.loads(msg.acknowledged_by)
-    except (json.JSONDecodeError, TypeError):
-        return None
 
 
 def _msg_to_response(msg: BoardMessage) -> BoardMessageResponse:
@@ -35,7 +21,7 @@ def _msg_to_response(msg: BoardMessage) -> BoardMessageResponse:
         color=msg.color,
         pinned=msg.pinned,
         expires_at=msg.expires_at,
-        acknowledged_by=_parse_acknowledged_by(msg),
+        acknowledged_by=parse_acknowledged_by(msg.acknowledged_by) or None,
         created_at=msg.created_at,
         updated_at=msg.updated_at,
     )
@@ -49,7 +35,7 @@ def _msg_to_dict(msg: BoardMessage) -> dict:
         "color": msg.color,
         "pinned": msg.pinned,
         "expires_at": msg.expires_at.isoformat() if msg.expires_at else None,
-        "acknowledged_by": _parse_acknowledged_by(msg) or [],
+        "acknowledged_by": parse_acknowledged_by(msg.acknowledged_by),
         "created_at": msg.created_at.isoformat() if msg.created_at else None,
     }
 

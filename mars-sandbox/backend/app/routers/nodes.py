@@ -1,5 +1,7 @@
 """Node management router - heartbeat-based node discovery."""
 import hmac
+import json
+import logging
 import uuid
 from datetime import datetime
 from typing import List, Optional
@@ -10,23 +12,16 @@ from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..database import get_db
-from ..dependencies import require_auth
+from ..dependencies import require_auth, verify_node_api_key
 from ..models import Node
 from ..schemas import NodeHeartbeatRequest, NodeResponse, NodeListResponse
 from ..utils.timezone import beijing_now
 from ..ws.connection_pool import pool
-from ..routers.commands import _wait_for_result
+from ..services.command_result import wait_for_result
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/nodes", tags=["nodes"])
-
-
-def _verify_api_key(x_api_key: str = Header(...)):
-    """Verify API key from X-API-Key header."""
-    if not hmac.compare_digest(x_api_key, settings.NODE_API_KEY):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Invalid API key",
-        )
 
 
 def _verify_api_key_or_cookie(request: Request, x_api_key: Optional[str] = Header(None)):
@@ -95,7 +90,7 @@ def _node_to_response(node: Node, stale_seconds: int) -> NodeResponse:
 async def heartbeat(
     payload: NodeHeartbeatRequest,
     db: Session = Depends(get_db),
-    _: None = Depends(_verify_api_key),
+    _: None = Depends(verify_node_api_key),
 ):
     """Upsert node heartbeat. Called by home-agent periodically."""
     node = db.query(Node).filter(Node.node_id == payload.node_id).first()
@@ -179,13 +174,7 @@ async def execute_node_command(
     payload: NodeCommandRequest,
     _=Depends(require_auth),
 ):
-    """
-    Dashboard 发送命令到指定节点并等待结果（cookie 认证）
-    """
-    import json
-    import logging
-    logger = logging.getLogger(__name__)
-
+    """Dashboard 发送命令到指定节点并等待结果（cookie 认证）"""
     command = payload.command
     timeout = payload.timeout
 
@@ -224,7 +213,7 @@ async def execute_node_command(
             detail=f"发送命令失败: {e}",
         )
 
-    result = await _wait_for_result(request_id, timeout)
+    result = await wait_for_result(request_id, timeout)
 
     if result is None:
         raise HTTPException(

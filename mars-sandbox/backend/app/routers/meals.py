@@ -17,6 +17,8 @@ from ..config import settings
 from ..database import get_db
 from ..dependencies import require_auth
 from ..models import FamilyMember, Dish, MealPlan, MealPlanItem, MealLog, DishPreference
+from ..utils.json_helpers import parse_json_field
+from ..utils.timezone import beijing_now
 from ..schemas import (
     FamilyMemberResponse, FamilyMemberCreate, FamilyMemberUpdate, FamilyMemberListResponse,
     DishResponse, DishCreate, DishListResponse,
@@ -54,22 +56,11 @@ router = APIRouter(prefix="/api/meals", tags=["meals"])
 
 def _normalize_liked_by(value) -> dict:
     """Normalize liked_by field: old format is List[int], new format is Dict[str, List[int]]."""
-    parsed = _parse_json_field(value)
+    parsed = parse_json_field(value)
     if isinstance(parsed, dict):
         return parsed
     # Old format was a flat list of member IDs — can't map to per-dish, return empty
     return {}
-
-def _parse_json_field(value) -> any:
-    """Parse a JSON string field, return parsed object or None."""
-    if value is None:
-        return None
-    if isinstance(value, (dict, list)):
-        return value
-    try:
-        return json.loads(value)
-    except (json.JSONDecodeError, TypeError):
-        return None
 
 
 def _dish_to_response(dish: Dish) -> DishResponse:
@@ -77,9 +68,9 @@ def _dish_to_response(dish: Dish) -> DishResponse:
         id=dish.id,
         name=dish.name,
         category=dish.category,
-        ingredients=_parse_json_field(dish.ingredients) or [],
+        ingredients=parse_json_field(dish.ingredients) or [],
         recipe=dish.recipe,
-        tags=_parse_json_field(dish.tags) or [],
+        tags=parse_json_field(dish.tags) or [],
         origin=dish.origin,
         photo_count=dish.photo_count,
         created_at=dish.created_at,
@@ -105,8 +96,8 @@ def _member_to_response(m: FamilyMember, db: Session = None) -> FamilyMemberResp
         name=m.name,
         role=m.role,
         avatar=m.avatar,
-        preferences=_parse_json_field(m.preferences),
-        allergies=_parse_json_field(m.allergies),
+        preferences=parse_json_field(m.preferences),
+        allergies=parse_json_field(m.allergies),
         board_color=m.board_color,
         liked_dishes=liked_dishes if liked_dishes else None,
         created_at=m.created_at,
@@ -124,7 +115,7 @@ def _plan_item_to_response(item: MealPlanItem, source: Optional[str] = None) -> 
             id=dish.id,
             name=dish.name,
             category=dish.category,
-            ingredients=_parse_json_field(dish.ingredients) or [],
+            ingredients=parse_json_field(dish.ingredients) or [],
             recipe=dish.recipe,
         ),
         sort_order=item.sort_order,
@@ -382,7 +373,7 @@ async def get_current_plan(
             log_lookup[log_date] = {}
             log_date_dish_names[log_date] = set()
         log_lookup[log_date].setdefault(log.meal_type, []).append(log)
-        dishes = _parse_json_field(log.dishes_json) or []
+        dishes = parse_json_field(log.dishes_json) or []
         for d in dishes:
             if isinstance(d, dict) and "name" in d:
                 log_date_dish_names[log_date].add(d["name"])
@@ -432,7 +423,7 @@ async def get_current_plan(
             seen_dish_ids = set()
             dish_idx = 0
             for log in logs:
-                dishes = _parse_json_field(log.dishes_json) or []
+                dishes = parse_json_field(log.dishes_json) or []
                 for d in dishes:
                     if not isinstance(d, dict) or "name" not in d:
                         continue
@@ -509,7 +500,7 @@ async def generate_plan(
     members = db.query(FamilyMember).order_by(FamilyMember.id).all()
     member_data = []
     for m in members:
-        preferences = _parse_json_field(m.preferences) or {}
+        preferences = parse_json_field(m.preferences) or {}
         # Merge dynamically liked dishes into likes
         liked_dishes = db.query(DishPreference).filter(
             DishPreference.member_id == m.id
@@ -524,7 +515,7 @@ async def generate_plan(
             "name": m.name,
             "role": m.role,
             "preferences": preferences,
-            "allergies": _parse_json_field(m.allergies) or [],
+            "allergies": parse_json_field(m.allergies) or [],
         })
 
     # Collect recent dishes (last 4 weeks)
@@ -532,7 +523,7 @@ async def generate_plan(
     recent_logs = db.query(MealLog).filter(MealLog.date >= four_weeks_ago).all()
     recent_dish_names = set()
     for log in recent_logs:
-        dishes = _parse_json_field(log.dishes_json) or []
+        dishes = parse_json_field(log.dishes_json) or []
         for d in dishes:
             if isinstance(d, dict) and "name" in d:
                 recent_dish_names.add(d["name"])
@@ -890,13 +881,13 @@ async def create_meal_log(
             ).first()
             if pref:
                 pref.like_count += 1
-                pref.last_liked_at = datetime.utcnow()
+                pref.last_liked_at = beijing_now()
             else:
                 pref = DishPreference(
                     dish_id=dish_id,
                     member_id=member_id,
                     like_count=1,
-                    last_liked_at=datetime.utcnow(),
+                    last_liked_at=beijing_now(),
                 )
                 db.add(pref)
     try:
@@ -941,7 +932,7 @@ async def list_meal_logs(
 
     items = []
     for log in logs:
-        dishes = _parse_json_field(log.dishes_json) or []
+        dishes = parse_json_field(log.dishes_json) or []
         items.append(MealLogResponse(
             id=log.id,
             date=log.date,
@@ -982,7 +973,7 @@ async def get_history_stats(
             daily_map[day_key] = set()
         total_meals += 1
 
-        dishes = _parse_json_field(log.dishes_json) or []
+        dishes = parse_json_field(log.dishes_json) or []
         for d in dishes:
             if not isinstance(d, dict) or "name" not in d:
                 continue

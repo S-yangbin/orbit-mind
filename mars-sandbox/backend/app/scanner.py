@@ -216,7 +216,7 @@ def _sync_page(db: Session, dir_path: Path, slug: str, results: dict):
 
         # Content changed
         existing.content_hash = dir_hash
-        existing.synced_at = datetime.utcnow()
+        existing.synced_at = beijing_now()
         existing.entry_file = entry_file
 
         # Only update scanned fields if not customized

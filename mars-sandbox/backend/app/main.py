@@ -26,9 +26,6 @@ logger = logging.getLogger(__name__)
 # Frontend dist directory
 FRONTEND_DIST = Path(__file__).parent.parent / "frontend" / "dist"
 
-# Background scheduler
-_scheduler_thread = None
-
 
 def _migrate_db():
     """Run database migrations for new columns."""
@@ -41,23 +38,29 @@ def _migrate_db():
             conn.commit()
         logger.info("Migration: added 'category' column to pages table")
 
+    # Skip MySQL-specific migrations on SQLite (ADD INDEX / ADD CONSTRAINT not supported)
+    is_mysql = settings.DB_TYPE != "sqlite"
+
     # drive_files: add is_dir and parent_id columns (only if table exists)
     if 'drive_files' in inspector.get_table_names():
         drive_cols = [col['name'] for col in inspector.get_columns('drive_files')]
         if 'is_dir' not in drive_cols:
+            col_type = "TINYINT" if is_mysql else "INTEGER"
             with engine.connect() as conn:
-                conn.execute(text("ALTER TABLE drive_files ADD COLUMN is_dir TINYINT NOT NULL DEFAULT 0"))
-                conn.execute(text("ALTER TABLE drive_files ADD INDEX ix_drive_files_is_dir (is_dir)"))
+                conn.execute(text(f"ALTER TABLE drive_files ADD COLUMN is_dir {col_type} NOT NULL DEFAULT 0"))
+                if is_mysql:
+                    conn.execute(text("ALTER TABLE drive_files ADD INDEX ix_drive_files_is_dir (is_dir)"))
                 conn.commit()
             logger.info("Migration: added 'is_dir' column to drive_files table")
         if 'parent_id' not in drive_cols:
             with engine.connect() as conn:
                 conn.execute(text("ALTER TABLE drive_files ADD COLUMN parent_id INT NULL"))
-                conn.execute(text("ALTER TABLE drive_files ADD INDEX ix_drive_files_parent_id (parent_id)"))
-                conn.execute(text(
-                    "ALTER TABLE drive_files ADD CONSTRAINT fk_drive_files_parent "
-                    "FOREIGN KEY (parent_id) REFERENCES drive_files(id) ON DELETE CASCADE"
-                ))
+                if is_mysql:
+                    conn.execute(text("ALTER TABLE drive_files ADD INDEX ix_drive_files_parent_id (parent_id)"))
+                    conn.execute(text(
+                        "ALTER TABLE drive_files ADD CONSTRAINT fk_drive_files_parent "
+                        "FOREIGN KEY (parent_id) REFERENCES drive_files(id) ON DELETE CASCADE"
+                    ))
                 conn.commit()
             logger.info("Migration: added 'parent_id' column to drive_files table")
 
@@ -85,11 +88,6 @@ def _migrate_db():
             logger.info("Migration: added 'board_color' column to family_members table")
 
 
-def _seed_activity_types():
-    """No longer seed preset activity types — users define their own."""
-    pass
-
-
 def _start_background_scan():
     """Initial scan on startup, then periodic."""
     time.sleep(5)  # Wait for app to be ready
@@ -110,7 +108,6 @@ async def lifespan(app: FastAPI):
     logger.info("Starting up...")
     init_db()
     _migrate_db()
-    _seed_activity_types()
     logger.info("Database initialized.")
 
     # Ensure directories exist
@@ -199,14 +196,12 @@ async def serve_project_file(slug: str, path: str, request: Request):
     if user is None:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
-    # Path traversal protection
-    safe_slug = slug.replace("..", "").replace("/", "")
-    safe_path = path.replace("..", "")
-    file_path = os.path.join(settings.HTML_ROOT, safe_slug, safe_path)
-
+    # Build file path and verify it's within HTML_ROOT using realpath
+    file_path = os.path.join(settings.HTML_ROOT, slug, path)
     real_html_root = os.path.realpath(settings.HTML_ROOT)
     real_file_path = os.path.realpath(file_path)
-    if not real_file_path.startswith(real_html_root):
+    # The actual defense: ensure resolved path is under HTML_ROOT
+    if not (real_file_path == real_html_root or real_file_path.startswith(real_html_root + os.sep)):
         raise HTTPException(status_code=403, detail="Forbidden")
 
     if not os.path.isfile(file_path):
@@ -253,11 +248,11 @@ async def pwa_manifest():
 # PWA icons
 @app.get("/icons/{filename}")
 async def pwa_icons(filename: str):
+    # Security: validate before building path
+    if ".." in filename or "/" in filename:
+        raise HTTPException(status_code=403, detail="Forbidden")
     icon_path = FRONTEND_DIST / "icons" / filename
     if icon_path.exists() and icon_path.is_file():
-        # Security: prevent path traversal
-        if ".." in filename or "/" in filename:
-            raise HTTPException(status_code=403, detail="Forbidden")
         return FileResponse(str(icon_path), media_type="image/png")
     raise HTTPException(status_code=404, detail="Icon not found")
 

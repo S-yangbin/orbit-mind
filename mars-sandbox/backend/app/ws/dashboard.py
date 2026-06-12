@@ -23,8 +23,10 @@ from ..models import (
     BoardMessage, Page, MealPlan, MealPlanItem, MealLog, Dish, FamilyMember,
     DailySchedule, ActivityType, WeeklyTemplate, WeeklyTemplateDay,
 )
-from ..config import settings
 from ..services.ai_service import generate_wallpaper as _ai_generate_wallpaper
+from ..utils.json_helpers import parse_json_field, parse_acknowledged_by
+
+from ..config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -174,7 +176,7 @@ def format_today_meals(db) -> str:
     logs = db.query(MealLog).filter(MealLog.date == today).all()
     if logs:
         for log in logs:
-            dishes = _parse_json_field(log.dishes_json) or []
+            dishes = parse_json_field(log.dishes_json) or []
             dish_names = [d.get("name", "") for d in dishes if isinstance(d, dict) and d.get("name")]
             if dish_names:
                 meal_label = {"breakfast": "早餐", "lunch": "午餐", "dinner": "晚餐"}.get(log.meal_type, log.meal_type)
@@ -222,35 +224,13 @@ def _get_board_messages(db) -> list[dict]:
             "color": m.color,
             "pinned": m.pinned,
             "expires_at": m.expires_at.isoformat() if m.expires_at else None,
-            "acknowledged_by": _parse_acknowledged_by(m),
+            "acknowledged_by": parse_acknowledged_by(m.acknowledged_by),
             "created_at": m.created_at.isoformat() if m.created_at else None,
         }
         for m in messages
     ]
 
 
-def _parse_acknowledged_by(msg: BoardMessage) -> list:
-    """解析留言已确认成员 JSON 字段"""
-    if msg.acknowledged_by is None:
-        return []
-    if isinstance(msg.acknowledged_by, list):
-        return msg.acknowledged_by
-    try:
-        return json.loads(msg.acknowledged_by) or []
-    except (json.JSONDecodeError, TypeError):
-        return []
-
-
-def _parse_json_field(value) -> list | dict | None:
-    """安全解析 JSON 字段"""
-    if value is None:
-        return None
-    if isinstance(value, (list, dict)):
-        return value
-    try:
-        return json.loads(value)
-    except (json.JSONDecodeError, TypeError):
-        return None
 
 
 def _get_meal_plans(db) -> list[dict]:
@@ -353,7 +333,7 @@ def _get_meal_plans(db) -> list[dict]:
             needed_ids = set()
             needed_names = set()
             for log in logs:
-                for d in (_parse_json_field(log.dishes_json) or []):
+                for d in (parse_json_field(log.dishes_json) or []):
                     if isinstance(d, dict) and "name" in d:
                         if d.get("dish_id"):
                             needed_ids.add(d["dish_id"])
@@ -373,7 +353,7 @@ def _get_meal_plans(db) -> list[dict]:
             log_items = []
             dish_idx = 0
             for log in logs:
-                dishes = _parse_json_field(log.dishes_json) or []
+                dishes = parse_json_field(log.dishes_json) or []
                 for d in dishes:
                     if not isinstance(d, dict) or "name" not in d:
                         continue
@@ -447,7 +427,7 @@ def _batch_get_dish_photos(db, dish_ids: set) -> dict:
     )
 
     for log in recent_logs:
-        dishes = _parse_json_field(log.dishes_json) or []
+        dishes = parse_json_field(log.dishes_json) or []
         for d in dishes:
             if not isinstance(d, dict):
                 continue
@@ -474,7 +454,7 @@ def _get_recent_meals(db) -> list[dict]:
     )
     result = []
     for log in logs:
-        dishes = _parse_json_field(log.dishes_json) or []
+        dishes = parse_json_field(log.dishes_json) or []
         result.append({
             "id": log.id,
             "date": log.date.isoformat() if log.date else None,
@@ -790,9 +770,10 @@ def _get_daily_background() -> Optional[str]:
 
 def _fetch_bing_images() -> Optional[list[str]]:
     """获取 Bing 每日壁纸 URL 列表（8张），缓存 4 小时"""
-    now = time.time()
-    if _bing_images_cache["data"] and (now - _bing_images_cache["timestamp"]) < BING_IMAGES_CACHE_TTL:
-        return _bing_images_cache["data"]
+    with _cache_lock:
+        now = time.time()
+        if _bing_images_cache["data"] and (now - _bing_images_cache["timestamp"]) < BING_IMAGES_CACHE_TTL:
+            return _bing_images_cache["data"]
 
     try:
         url = "https://www.bing.com/HPImageArchive.aspx?format=js&idx=0&n=8&mkt=zh-CN"
@@ -803,13 +784,15 @@ def _fetch_bing_images() -> Optional[list[str]]:
         images = data.get("images")
         if images:
             urls = [f"https://www.bing.com{img['url']}" for img in images]
-            _bing_images_cache["data"] = urls
-            _bing_images_cache["timestamp"] = now
+            with _cache_lock:
+                _bing_images_cache["data"] = urls
+                _bing_images_cache["timestamp"] = now
             logger.info("Bing 图片列表已更新: %d 张", len(urls))
             return urls
     except Exception as e:
         logger.error("获取 Bing 图片列表失败: %s", e)
-        return _bing_images_cache["data"]
+        with _cache_lock:
+            return _bing_images_cache["data"]
 
     return None
 
@@ -824,9 +807,10 @@ def _fetch_pexels_images() -> Optional[list[str]]:
     if not api_key:
         return None
 
-    now = time.time()
-    if _pexels_images_cache["data"] and (now - _pexels_images_cache["timestamp"]) < PEXELS_IMAGES_CACHE_TTL:
-        return _pexels_images_cache["data"]
+    with _cache_lock:
+        now = time.time()
+        if _pexels_images_cache["data"] and (now - _pexels_images_cache["timestamp"]) < PEXELS_IMAGES_CACHE_TTL:
+            return _pexels_images_cache["data"]
 
     query = random.choice(_PEXELS_QUERIES)
     try:
@@ -856,13 +840,15 @@ def _fetch_pexels_images() -> Optional[list[str]]:
                 if img_url:
                     urls.append(img_url)
             if urls:
-                _pexels_images_cache["data"] = urls
-                _pexels_images_cache["timestamp"] = now
+                with _cache_lock:
+                    _pexels_images_cache["data"] = urls
+                    _pexels_images_cache["timestamp"] = now
                 logger.info("Pexels 壁纸已更新: %d 张 (query=%s, page=%s)", len(urls), query, params["page"])
                 return urls
     except Exception as e:
         logger.error("获取 Pexels 壁纸失败: %s", e)
-        return _pexels_images_cache["data"]
+        with _cache_lock:
+            return _pexels_images_cache["data"]
 
     return None
 
@@ -1113,7 +1099,7 @@ async def _handle_acknowledge_message(message_id, member_id, ws: WebSocket):
             return
 
         # 解析当前已确认列表
-        acknowledged = _parse_acknowledged_by(msg)
+        acknowledged = parse_acknowledged_by(msg.acknowledged_by)
         member_id_int = int(member_id)
 
         # Toggle: 如果已确认则移除，否则添加
