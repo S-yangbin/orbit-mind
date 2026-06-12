@@ -16,6 +16,9 @@ requests>=2.31.0
 alibabacloud-sts20150401>=1.0.0
 alibabacloud-tea-openapi>=0.3.0
 
+# Alibaba Cloud DashScope SDK (for TTS)
+dashscope>=1.20.0
+
 # WebSocket support
 websockets>=12.0
 

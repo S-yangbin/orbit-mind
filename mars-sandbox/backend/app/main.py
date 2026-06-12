@@ -182,6 +182,11 @@ wallpaper_dir = settings.WALLPAPER_DIR
 os.makedirs(wallpaper_dir, exist_ok=True)
 app.mount("/wallpapers", StaticFiles(directory=wallpaper_dir), name="wallpapers")
 
+# TTS audio files
+tts_dir = settings.TTS_DIR
+os.makedirs(tts_dir, exist_ok=True)
+app.mount("/tts", StaticFiles(directory=tts_dir), name="tts")
+
 
 # Frontend assets (JS/CSS bundles referenced by index.html at /assets/)
 if FRONTEND_DIST.exists():

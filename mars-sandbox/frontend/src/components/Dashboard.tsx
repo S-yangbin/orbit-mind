@@ -119,7 +119,7 @@ const TRAVEL_GRADIENTS = [
 export function Dashboard() {
   const {
     data, isConnected, familyMembers, acknowledgeMessage, contentVersion,
-    ttsVersion, ttsText, ttsPage,
+    ttsVersion, ttsText, ttsAudioUrl, ttsPage,
     switchPageVersion, switchPageTarget, autoRotate, autoRotateInterval,
   } = useDashboardWs();
   const [now, setNow] = useState(new Date());
@@ -159,8 +159,9 @@ export function Dashboard() {
       .catch(() => setOffsetSchedule([]));
   }, [scheduleDayOffset]);
 
-  // ── TTS 语音播报 ──
+  // ── TTS 语音播报（使用 <audio> 元素播放后端生成的 mp3）──
   const autoRotateRef = useRef<ReturnType<typeof setInterval>>();
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     if (ttsVersion === 0) return;
@@ -168,19 +169,15 @@ export function Dashboard() {
     if (ttsPage !== null && ttsPage !== dashboardPage) {
       setDashboardPage(ttsPage);
     }
-    // 使用 Web Speech API 播报
-    if ("speechSynthesis" in window && ttsText) {
-      // 取消正在进行的播报
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(ttsText);
-      utterance.lang = "zh-CN";
-      utterance.rate = 0.9;
-      utterance.pitch = 1.0;
-      // 尝试选择中文语音
-      const voices = window.speechSynthesis.getVoices();
-      const zhVoice = voices.find((v) => v.lang.startsWith("zh"));
-      if (zhVoice) utterance.voice = zhVoice;
-      window.speechSynthesis.speak(utterance);
+    // 使用 <audio> 元素播放后端生成的 mp3
+    if (ttsAudioUrl) {
+      const audio = audioRef.current;
+      if (audio) {
+        audio.src = ttsAudioUrl;
+        audio.play().catch((e) => {
+          console.warn("TTS 播放失败（需要用户首次触摸解锁）:", e);
+        });
+      }
     }
   }, [ttsVersion]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -409,6 +406,9 @@ export function Dashboard() {
       fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', sans-serif",
       overflow: "hidden",
     }}>
+      {/* TTS 音频元素（用于播放后端生成的语音） */}
+      <audio ref={audioRef} preload="auto" />
+
       {/* 全屏壁纸背景 */}
       {bgImage && (
         <div style={{

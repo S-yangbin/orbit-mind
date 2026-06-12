@@ -9,10 +9,12 @@ interface UseDashboardWsReturn {
   acknowledgeMessage: (messageId: number, memberId: number) => void;
   /** 非壁纸内容更新版本，每次变化可用于唤醒屏保 */
   contentVersion: number;
-  /** TTS 播报信号：每次播报递增，配合 ttsText/ttsPage 使用 */
+  /** TTS 播报信号：每次播报递增，配合 ttsText/ttsPage/ttsAudioUrl 使用 */
   ttsVersion: number;
   /** TTS 播报文本 */
   ttsText: string;
+  /** TTS 播报音频 URL（后端生成的 mp3 文件） */
+  ttsAudioUrl: string | null;
   /** TTS 播报时自动切换到的页面 (null=不切换) */
   ttsPage: number | null;
   /** 切换页面信号：每次切换递增 */
@@ -38,6 +40,7 @@ export function useDashboardWs(): UseDashboardWsReturn {
   const [contentVersion, setContentVersion] = useState(0);
   const [ttsVersion, setTtsVersion] = useState(0);
   const [ttsText, setTtsText] = useState("");
+  const [ttsAudioUrl, setTtsAudioUrl] = useState<string | null>(null);
   const [ttsPage, setTtsPage] = useState<number | null>(null);
   const [switchPageVersion, setSwitchPageVersion] = useState(0);
   const [switchPageTarget, setSwitchPageTarget] = useState(0);
@@ -190,6 +193,7 @@ export function useDashboardWs(): UseDashboardWsReturn {
             // TTS 语音播报指令
             if ((msg as any).text) {
               setTtsText((msg as any).text);
+              setTtsAudioUrl((msg as any).audio_url ?? null);
               setTtsPage((msg as any).page ?? null);
               setTtsVersion((v) => v + 1);
               setContentVersion((v) => v + 1);
@@ -270,7 +274,7 @@ export function useDashboardWs(): UseDashboardWsReturn {
 
   return {
     data, isConnected, lastUpdate, familyMembers, acknowledgeMessage, contentVersion,
-    ttsVersion, ttsText, ttsPage,
+    ttsVersion, ttsText, ttsAudioUrl, ttsPage,
     switchPageVersion, switchPageTarget, autoRotate, autoRotateInterval,
   };
 }
