@@ -1,0 +1,2 @@
+patchedDependencies:
+  '@rc-component/trigger': patches/@rc-component__trigger.patch

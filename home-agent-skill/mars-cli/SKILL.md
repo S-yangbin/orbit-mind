@@ -2,16 +2,18 @@
 name: mars-cli
 description: >-
   mars-sandbox 家庭中枢管理平台 CLI 客户端。通过终端执行 mars-cli 命令，
-  管理远程节点、留言板、餐饮计划、视频学习、云盘、页面、标签、看板壁纸等。
+  管理远程节点、留言板、餐饮计划、视频学习、云盘、页面、标签、看板壁纸、
+  儿童学习计划等。
   看板壁纸支持从 Bing + Pexels 壁纸池（约23张）随机刷新。
   当用户提到：家庭服务器、留言板、餐饮计划、菜单、视频学习、云盘文件、
-  页面管理、节点管理、远程命令执行、刷新壁纸、换壁纸、看板时触发。
+  页面管理、节点管理、远程命令执行、刷新壁纸、换壁纸、看板、
+  学习计划、作业、课程安排、今日计划时触发。
   当用户说「让小皮帮我做xxx」或提到「小皮」相关请求时，也应触发本 Skill。
 compatibility: Requires mars-cli installed on the server, and mars-sandbox service running.
 metadata:
   author: orbit-mind
   version: "1.0"
-  tags: [automation, remote-control, home-server, cli, meal-planning, drive, video-learning]
+  tags: [automation, remote-control, home-server, cli, meal-planning, drive, video-learning, schedule]
   category: smart-home
 required_environment_variables:
   - name: MARS_SANDBOX_URL
@@ -24,12 +26,12 @@ required_environment_variables:
     required_for: nodes/pages/tags/scan 等 API Key 认证模块
   - name: MARS_SANDBOX_USERNAME
     prompt: mars-sandbox 登录用户名
-    help: board/meals/videos/drive 等 Cookie 认证模块需要
-    required_for: 留言板、餐饮计划、视频学习、云盘模块
+    help: board/meals/videos/drive/schedule 等 Cookie 认证模块需要
+    required_for: 留言板、餐饮计划、视频学习、云盘、学习计划模块
   - name: MARS_SANDBOX_PASSWORD
     prompt: mars-sandbox 登录密码
-    help: board/meals/videos/drive 等 Cookie 认证模块需要
-    required_for: 留言板、餐饮计划、视频学习、云盘模块
+    help: board/meals/videos/drive/schedule 等 Cookie 认证模块需要
+    required_for: 留言板、餐饮计划、视频学习、云盘、学习计划模块
 ---
 
 # mars-cli — 家庭中枢管理平台 CLI
@@ -47,8 +49,9 @@ required_environment_variables:
 - 管理页面和标签
 - 查看节点状态
 - 刷新看板壁纸
+- 管理儿童学习计划（活动类型、周模板、每日计划、完成情况）
 
-触发关键词：家庭服务器、留言板、餐饮计划、菜单、吃什么、视频学习、云盘、页面管理、节点、远程命令、壁纸、看板
+触发关键词：家庭服务器、留言板、餐饮计划、菜单、吃什么、视频学习、云盘、页面管理、节点、远程命令、壁纸、看板、学习计划、作业、今日计划
 
 ## 前提条件
 
@@ -101,6 +104,7 @@ mars-cli health
 | 标签管理 | `mars-cli tags` | 标签 CRUD | API Key |
 | 扫描 | `mars-cli scan` | 页面目录扫描 | API Key |
 | 看板 | `mars-cli dashboard` | 壁纸刷新等看板管理 | Cookie（自动登录）/ API Key |
+| 学习计划 | `mars-cli schedule` | 活动类型、周模板、每日计划 | Cookie（自动登录） |
 
 ## 命令参考
 
@@ -255,6 +259,54 @@ mars-cli dashboard set-wallpaper <filename>
 | `dashboard list-wallpapers` | 列出所有已生成的 AI 壁纸，显示文件名、URL、大小、创建时间 |
 | `dashboard set-wallpaper <filename>` | 设置指定壁纸并推送到所有已连接的 Dashboard |
 
+### 学习计划 (`schedule`)
+
+#### 活动类型 (`schedule types`)
+
+```bash
+mars-cli schedule types list
+mars-cli schedule types add '<name>' [--icon '📚'] [--color '#hex'] [--category '<cat>']
+mars-cli schedule types update <type_id> [--name '...'] [--icon '...'] [--color '...']
+mars-cli schedule types delete <type_id>
+```
+
+活动分类: `homework`（作业）、`reading`（绘本）、`sports`（运动）、`arts`（才艺）、`freeplay`（自由玩耆）、`custom`（自定义）。
+预设类型（做作业📝、读绘本📖、运动🏀、才艺♟️、自由玩耆🎮）不可删除。
+
+#### 周模板 (`schedule template`)
+
+```bash
+mars-cli schedule template get
+mars-cli schedule template set '<template_json>'
+```
+
+template JSON 格式：
+```json
+{"name": "默认周计划", "days": {"mon": [1,3], "tue": [2,4], "wed": [1], "thu": [3,5], "fri": [1], "sat": [2,4,5], "sun": [5]}}
+```
+
+`days` 的 key 为 `mon/tue/wed/thu/fri/sat/sun`，value 为活动类型 ID 数组。
+
+#### 每日计划
+
+```bash
+mars-cli schedule today
+mars-cli schedule daily <YYYY-MM-DD>
+mars-cli schedule add <YYYY-MM-DD> <activity_type_id>
+mars-cli schedule complete <item_id> [--note '完成情况说明']
+mars-cli schedule uncomplete <item_id>
+mars-cli schedule remove <item_id>
+```
+
+| 命令 | 说明 |
+|------|------|
+| `schedule today` | 查看今天的学习计划 |
+| `schedule daily <date>` | 查看指定日期的学习计划 |
+| `schedule add <date> <type_id>` | 手动添加活动到某天 |
+| `schedule complete <id> --note '...'` | 标记完成，可选附带完成备注 |
+| `schedule uncomplete <id>` | 取消完成标记 |
+| `schedule remove <id>` | 删除某天的活动 |
+
 ## 常见使用场景
 
 ### 查看家庭服务器状态
@@ -324,6 +376,34 @@ mars-cli dashboard list-wallpapers
 mars-cli dashboard set-wallpaper ai-wallpaper_高清风景壁纸,星空下的雪山,宁静壮观,_1781234567890.png
 ```
 
+### 管理儿童学习计划
+
+```bash
+# 查看今天的学习计划
+mars-cli schedule today
+
+# 标记作业完成并添加备注
+mars-cli schedule complete 12 --note '数学作业全对，语文抄写认真'
+
+# 查看本周活动类型
+mars-cli schedule types list
+
+# 新增一个自定义活动
+mars-cli schedule types add '练钢琴' --icon '🎹' --color '#E91E63' --category arts
+
+# 查看当前周模板
+mars-cli schedule template get
+
+# 设置周模板
+mars-cli schedule template set '{"name":"默认","days":{"mon":[1,3],"tue":[2,4],"wed":[1],"thu":[3,5],"fri":[1],"sat":[2,4,5],"sun":[5]}}'
+
+# 查看指定日期的计划
+mars-cli schedule daily 2025-07-10
+
+# 手动添加活动
+mars-cli schedule add 2025-07-10 3
+```
+
 壁纸来源：Bing 每日精选（8张）+ Pexels 随机风景（15张，8种主题轮换）+ AI 生成（按季节主题自动选择，支持自定义提示词）。
 AI 生成的壁纸持久保存在 OSS 目录 `/mnt/oss-sybuddy/data/wallpapers/`，可随时切换。
 
@@ -347,6 +427,6 @@ AI 生成的壁纸持久保存在 OSS 目录 `/mnt/oss-sybuddy/data/wallpapers/`
 
 - `nodes exec` 是最常用的远程操作命令，可在节点上执行任意 shell 命令
 - `meals plan generate` 耗时较长，建议设置足够的超时
-- board/meals/videos/drive 等模块需要 Cookie 认证，配置了 username+password 后会自动登录
+- board/meals/videos/drive/schedule 等模块需要 Cookie 认证，配置了 username+password 后会自动登录
 - 所有输出均为 JSON，方便 Agent 解析和呈现
 - 使用 `mars-cli --help` 或 `mars-cli <module> --help` 查看完整帮助

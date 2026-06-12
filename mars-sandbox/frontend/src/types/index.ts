@@ -390,6 +390,7 @@ export interface DashboardData {
   weather: WeatherInfo | null;
   weather_forecast: WeatherForecastItem[] | null;
   background_image: string | null;
+  today_schedule: TodayScheduleItem[];
 }
 
 export interface DashboardWsMessage {
@@ -401,3 +402,96 @@ export interface DashboardWsMessage {
   member_id?: number;
   acknowledged_by?: number[];
 }
+
+// --- Learning Plan (Children's Daily Schedule) ---
+
+export interface ActivityType {
+  id: number;
+  name: string;
+  icon: string;
+  category: string;
+  color: string;
+  is_preset: number;
+  sort_order: number;
+  child_id: number | null;
+  created_at: string;
+}
+
+export interface ActivityTypeCreate {
+  name: string;
+  icon?: string;
+  category?: string;
+  color?: string;
+}
+
+export interface ActivityTypeUpdate {
+  name?: string;
+  icon?: string;
+  category?: string;
+  color?: string;
+  sort_order?: number;
+}
+
+export interface WeeklyTemplateDayItem {
+  day_of_week: number;  // 0=Monday ... 6=Sunday
+  activity_type_id: number;
+  sort_order: number;
+}
+
+export interface WeeklyTemplate {
+  id: number;
+  name: string;
+  child_id: number | null;
+  is_active: number;
+  days: WeeklyTemplateDayItem[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WeeklyTemplateCreate {
+  name?: string;
+  days: WeeklyTemplateDayItem[];
+}
+
+export interface ScheduleActivityTypeInfo {
+  id: number;
+  name: string;
+  icon: string;
+  color: string;
+}
+
+export interface DailyScheduleItem {
+  id: number;
+  date: string;
+  activity_type_id: number;
+  activity_type: ScheduleActivityTypeInfo | null;
+  completed: number;
+  completed_at: string | null;
+  completion_note: string | null;
+  sort_order: number;
+  is_override: number;
+  created_at: string;
+}
+
+export interface DailyScheduleCreate {
+  date: string;
+  activity_type_id: number;
+  sort_order?: number;
+}
+
+export interface DailyScheduleUpdate {
+  completed?: number;
+  completion_note?: string;
+}
+
+export interface TodayScheduleItem {
+  id: number;
+  date: string;
+  activity_type: ScheduleActivityTypeInfo | null;
+  completed: number;
+  completed_at: string | null;
+  completion_note: string | null;
+  sort_order: number;
+  is_override: number;
+}
+

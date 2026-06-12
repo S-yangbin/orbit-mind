@@ -14,6 +14,7 @@ const CloudDrive = lazy(() => import("./components/CloudDrive").then(m => ({ def
 const BoardManagement = lazy(() => import("./components/BoardManagement").then(m => ({ default: m.BoardManagement })));
 const Dashboard = lazy(() => import("./components/Dashboard").then(m => ({ default: m.Dashboard })));
 const SettingsPage = lazy(() => import("./components/SettingsPage").then(m => ({ default: m.SettingsPage })));
+const LearningPlan = lazy(() => import("./components/LearningPlan").then(m => ({ default: m.LearningPlan })));
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
@@ -51,6 +52,7 @@ function AppRoutes() {
         <Route path="meals" element={<MealManagement />} />
         <Route path="drive" element={<CloudDrive />} />
         <Route path="board" element={<BoardManagement />} />
+        <Route path="schedule" element={<LearningPlan />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

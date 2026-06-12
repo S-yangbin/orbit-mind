@@ -545,3 +545,101 @@ class BoardMessageResponse(BaseModel):
 
 class BoardMessageListResponse(BaseModel):
     items: List[BoardMessageResponse]
+
+
+# ============================================================
+# Learning Plan (Children's Daily Schedule) Schemas
+# ============================================================
+
+# --- Activity Type ---
+class ActivityTypeResponse(BaseModel):
+    id: int
+    name: str
+    icon: str
+    category: str
+    color: str
+    is_preset: int
+    sort_order: int
+    child_id: Optional[int] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ActivityTypeCreate(BaseModel):
+    name: str
+    icon: str = "\U0001f4da"
+    category: str = "custom"
+    color: str = "#4A90D9"
+
+
+class ActivityTypeUpdate(BaseModel):
+    name: Optional[str] = None
+    icon: Optional[str] = None
+    category: Optional[str] = None
+    color: Optional[str] = None
+    sort_order: Optional[int] = None
+
+
+# --- Weekly Template ---
+class WeeklyTemplateDayItem(BaseModel):
+    day_of_week: int  # 0=Monday ... 6=Sunday
+    activity_type_id: int
+    sort_order: int = 0
+
+
+class WeeklyTemplateResponse(BaseModel):
+    id: int
+    name: str
+    child_id: Optional[int] = None
+    is_active: int
+    days: List[WeeklyTemplateDayItem] = []
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class WeeklyTemplateCreate(BaseModel):
+    name: str = "默认周计划"
+    days: List[WeeklyTemplateDayItem] = []  # day_of_week + activity_type_id list
+
+
+# --- Daily Schedule ---
+class DailyScheduleActivityType(BaseModel):
+    id: int
+    name: str
+    icon: str
+    color: str
+
+    class Config:
+        from_attributes = True
+
+
+class DailyScheduleResponse(BaseModel):
+    id: int
+    date: date
+    activity_type_id: int
+    activity_type: Optional[DailyScheduleActivityType] = None
+    completed: int
+    completed_at: Optional[datetime] = None
+    completion_note: Optional[str] = None
+    sort_order: int
+    is_override: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class DailyScheduleCreate(BaseModel):
+    date: date
+    activity_type_id: int
+    sort_order: int = 0
+
+
+class DailyScheduleUpdate(BaseModel):
+    completed: Optional[int] = None
+    completion_note: Optional[str] = None

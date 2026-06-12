@@ -18,7 +18,8 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from ..database import SessionLocal
 from ..models import (
-    BoardMessage, Page, MealPlan, MealPlanItem, MealLog, Dish, FamilyMember
+    BoardMessage, Page, MealPlan, MealPlanItem, MealLog, Dish, FamilyMember,
+    DailySchedule, ActivityType, WeeklyTemplate, WeeklyTemplateDay,
 )
 from ..config import settings
 from ..services.ai_service import generate_wallpaper as _ai_generate_wallpaper
@@ -883,6 +884,67 @@ async def set_wallpaper_and_broadcast(filename: str) -> Optional[str]:
     return new_bg
 
 
+def _get_today_schedule(db) -> list[dict]:
+    """获取今天的学习计划，如果没有则从周模板自动生成"""
+    today = date.today()
+
+    # 检查今天是否有记录，没有则从模板生成
+    existing = db.query(DailySchedule).filter(DailySchedule.date == today).first()
+    if existing is None:
+        tpl = (
+            db.query(WeeklyTemplate)
+            .options(joinedload(WeeklyTemplate.days))
+            .filter(WeeklyTemplate.is_active == 1)
+            .first()
+        )
+        if tpl:
+            dow = today.weekday()  # 0=Monday ... 6=Sunday
+            template_days = [d for d in tpl.days if d.day_of_week == dow]
+            for td in template_days:
+                item = DailySchedule(
+                    date=today,
+                    activity_type_id=td.activity_type_id,
+                    sort_order=td.sort_order,
+                    is_override=0,
+                )
+                db.add(item)
+            if template_days:
+                db.commit()
+
+    items = (
+        db.query(DailySchedule)
+        .filter(DailySchedule.date == today)
+        .order_by(DailySchedule.sort_order, DailySchedule.id)
+        .all()
+    )
+
+    # 批量加载活动类型
+    type_ids = {i.activity_type_id for i in items}
+    if type_ids:
+        types = {t.id: t for t in db.query(ActivityType).filter(ActivityType.id.in_(type_ids)).all()}
+    else:
+        types = {}
+
+    return [
+        {
+            "id": i.id,
+            "date": i.date.isoformat(),
+            "activity_type": {
+                "id": i.activity_type_id,
+                "name": types[i.activity_type_id].name if i.activity_type_id in types else "",
+                "icon": types[i.activity_type_id].icon if i.activity_type_id in types else "",
+                "color": types[i.activity_type_id].color if i.activity_type_id in types else "",
+            } if i.activity_type_id in types else None,
+            "completed": i.completed,
+            "completed_at": i.completed_at.isoformat() if i.completed_at else None,
+            "completion_note": i.completion_note,
+            "sort_order": i.sort_order,
+            "is_override": i.is_override,
+        }
+        for i in items
+    ]
+
+
 def _get_db_dashboard_data(db) -> dict:
     """获取数据库相关的看板数据（同步，本地查询很快）"""
     return {
@@ -891,6 +953,7 @@ def _get_db_dashboard_data(db) -> dict:
         "travel_pages": _get_travel_pages(db),
         "messages": _get_board_messages(db),
         "family_members": _get_family_members(db),
+        "today_schedule": _get_today_schedule(db),
     }
 
 

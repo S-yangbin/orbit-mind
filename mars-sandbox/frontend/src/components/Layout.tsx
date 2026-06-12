@@ -11,6 +11,7 @@ import {
   MenuOutlined,
   MessageOutlined,
   SettingOutlined,
+  CalendarOutlined,
 } from "@ant-design/icons";
 import { useAuth } from "../hooks/useAuth";
 import { useIsMobile } from "../hooks/useIsMobile";
@@ -21,6 +22,7 @@ const NAV_ITEMS = [
   { key: "/", icon: <HomeOutlined />, label: "页面" },
   { key: "/meals", icon: <CoffeeOutlined />, label: "吃什么" },
   { key: "/board", icon: <MessageOutlined />, label: "留言板" },
+  { key: "/schedule", icon: <CalendarOutlined />, label: "学习计划" },
   { key: "/videos", icon: <PlayCircleOutlined />, label: "视频" },
   { key: "/drive", icon: <CloudOutlined />, label: "云盘" },
 ];

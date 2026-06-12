@@ -39,6 +39,7 @@ from mars_cli import cmd_drive
 from mars_cli import cmd_scan
 from mars_cli import cmd_config
 from mars_cli import cmd_dashboard
+from mars_cli import cmd_schedule
 
 # ─── Typer App ─────────────────────────────────────────────────────────────
 
@@ -48,7 +49,7 @@ app = typer.Typer(
         "mars-sandbox 命令行客户端 —— AI Agent 友好的家庭中枢管理平台。\n\n"
         "支持功能模块: 节点管理(nodes) | 留言板(board) | 餐饮计划(meals) | "
         "视频学习(videos) | 云盘(drive) | 页面(pages) | 标签(tags) | 扫描(scan) | "
-        "看板(dashboard)\n\n"
+        "看板(dashboard) | 学习计划(schedule)\n\n"
         "使用前须配置连接信息（API Key 或 用户名+密码），详见 --help。"
     ),
     epilog=(
@@ -67,6 +68,8 @@ app = typer.Typer(
         "  mars-cli dashboard generate-wallpaper     # AI 生成高清壁纸\n"
         "  mars-cli dashboard list-wallpapers        # 列出已生成壁纸\n"
         "  mars-cli dashboard set-wallpaper <file>   # 设置指定壁纸\n"
+        "  mars-cli schedule today                  # 查看今天的学习计划\n"
+        "  mars-cli schedule complete <id> --note '...'  # 标记完成并备注\n"
     ),
     add_completion=False,
     no_args_is_help=True,
@@ -135,6 +138,7 @@ app.add_typer(cmd_drive.app, name="drive", help="云盘文件与文件夹管理"
 app.add_typer(cmd_scan.app, name="scan", help="页面目录扫描")
 app.add_typer(cmd_config.app, name="config", help="管理 CLI 配置文件")
 app.add_typer(cmd_dashboard.app, name="dashboard", help="家庭看板管理（壁纸刷新等）")
+app.add_typer(cmd_schedule.app, name="schedule", help="儿童学习计划管理（活动类型、周模板、每日计划）")
 
 
 # ─── 顶层命令: 健康检查 ────────────────────────────────────────────────────

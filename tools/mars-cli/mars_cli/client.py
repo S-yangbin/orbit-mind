@@ -685,3 +685,88 @@ class MarsClient:
             timeout=15,
         )
         return self._handle_response(resp)
+
+    # ─── 学习计划 ────────────────────────────────────────────────────────────
+
+    def schedule_list_types(self) -> Dict[str, Any]:
+        """GET /api/schedule/activity-types — 获取所有活动类型。"""
+        self._ensure_auth()
+        resp = self.session.get(self._url("/api/schedule/activity-types"), timeout=15)
+        return self._handle_response(resp)
+
+    def schedule_create_type(self, name: str, icon: str = "📋", color: str = "#6b7280",
+                             category: str = "custom") -> Dict[str, Any]:
+        """POST /api/schedule/activity-types — 创建自定义活动类型。"""
+        self._ensure_auth()
+        body: Dict[str, Any] = {"name": name, "icon": icon, "color": color, "category": category}
+        resp = self.session.post(self._url("/api/schedule/activity-types"), json=body, timeout=15)
+        return self._handle_response(resp)
+
+    def schedule_update_type(self, type_id: int, **kwargs) -> Dict[str, Any]:
+        """PUT /api/schedule/activity-types/{id} — 更新活动类型。"""
+        self._ensure_auth()
+        body = {k: v for k, v in kwargs.items() if v is not None}
+        resp = self.session.put(self._url(f"/api/schedule/activity-types/{type_id}"), json=body, timeout=15)
+        return self._handle_response(resp)
+
+    def schedule_delete_type(self, type_id: int) -> Dict[str, Any]:
+        """DELETE /api/schedule/activity-types/{id} — 删除自定义活动类型。"""
+        self._ensure_auth()
+        resp = self.session.delete(self._url(f"/api/schedule/activity-types/{type_id}"), timeout=15)
+        return self._handle_response(resp)
+
+    def schedule_get_template(self) -> Dict[str, Any]:
+        """GET /api/schedule/template — 获取当前激活的周模板。"""
+        self._ensure_auth()
+        resp = self.session.get(self._url("/api/schedule/template"), timeout=15)
+        return self._handle_response(resp)
+
+    def schedule_set_template(self, name: str, days: Dict[str, List[int]]) -> Dict[str, Any]:
+        """POST /api/schedule/template — 创建/更新周模板。"""
+        self._ensure_auth()
+        body: Dict[str, Any] = {"name": name, "days": days}
+        resp = self.session.post(self._url("/api/schedule/template"), json=body, timeout=15)
+        return self._handle_response(resp)
+
+    def schedule_today(self) -> Dict[str, Any]:
+        """GET /api/schedule/daily?date=today — 获取今天的计划。"""
+        self._ensure_auth()
+        from datetime import date
+        today = date.today().isoformat()
+        resp = self.session.get(self._url("/api/schedule/daily"), params={"date": today}, timeout=15)
+        return self._handle_response(resp)
+
+    def schedule_daily(self, date: str) -> Dict[str, Any]:
+        """GET /api/schedule/daily?date=YYYY-MM-DD — 获取某天的计划。"""
+        self._ensure_auth()
+        resp = self.session.get(self._url("/api/schedule/daily"), params={"date": date}, timeout=15)
+        return self._handle_response(resp)
+
+    def schedule_add(self, date: str, activity_type_id: int) -> Dict[str, Any]:
+        """POST /api/schedule/daily — 手动添加活动到某天。"""
+        self._ensure_auth()
+        body: Dict[str, Any] = {"date": date, "activity_type_id": activity_type_id}
+        resp = self.session.post(self._url("/api/schedule/daily"), json=body, timeout=15)
+        return self._handle_response(resp)
+
+    def schedule_complete(self, item_id: int, note: Optional[str] = None) -> Dict[str, Any]:
+        """PUT /api/schedule/daily/{id} — 标记完成，可选附带完成备注。"""
+        self._ensure_auth()
+        body: Dict[str, Any] = {"completed": 1}
+        if note:
+            body["completion_note"] = note
+        resp = self.session.put(self._url(f"/api/schedule/daily/{item_id}"), json=body, timeout=15)
+        return self._handle_response(resp)
+
+    def schedule_uncomplete(self, item_id: int) -> Dict[str, Any]:
+        """PUT /api/schedule/daily/{id} — 取消完成标记。"""
+        self._ensure_auth()
+        resp = self.session.put(self._url(f"/api/schedule/daily/{item_id}"),
+                                json={"completed": 0}, timeout=15)
+        return self._handle_response(resp)
+
+    def schedule_remove(self, item_id: int) -> Dict[str, Any]:
+        """DELETE /api/schedule/daily/{id} — 删除某天的活动。"""
+        self._ensure_auth()
+        resp = self.session.delete(self._url(f"/api/schedule/daily/{item_id}"), timeout=15)
+        return self._handle_response(resp)

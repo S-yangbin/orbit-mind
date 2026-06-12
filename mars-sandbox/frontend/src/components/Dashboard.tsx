@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, memo, useCallback } from "react";
-import { Spin, Typography, Tag, Image, Modal } from "antd";
+import { Spin, Typography, Tag, Image, Modal, Button, Input } from "antd";
 import {
   WifiOutlined,
   DisconnectOutlined,
@@ -8,11 +8,15 @@ import {
   MessageOutlined,
   PushpinOutlined,
   CheckCircleFilled,
+  CheckCircleOutlined,
+  LeftOutlined,
+  RightOutlined,
 } from "@ant-design/icons";
 import { DashboardPets } from "./DashboardPets";
 import { DashboardButterflies } from "./DashboardButterflies";
 import { useDashboardWs } from "../hooks/useDashboardWs";
-import { resolveColor, formatBoardDateTime, mealPhotoToUrl } from "../utils";
+import { updateDailyItem } from "../api/schedule";
+import { resolveColor, tintBackground, formatBoardDateTime, mealPhotoToUrl } from "../utils";
 import type {
   DashboardMealPlanItem,
   BoardMessage,
@@ -20,6 +24,7 @@ import type {
   WeatherForecastItem,
   DashboardTravelPage,
   DashboardFamilyMember,
+  TodayScheduleItem,
 } from "../types";
 
 const { Title, Text } = Typography;
@@ -115,8 +120,24 @@ export function Dashboard() {
   const { data, isConnected, familyMembers, acknowledgeMessage, contentVersion } = useDashboardWs();
   const [now, setNow] = useState(new Date());
   const [selectedTravelPage, setSelectedTravelPage] = useState<DashboardTravelPage | null>(null);
+  // 菜单详情弹窗（适老化大字展示）
+  const [selectedMealDay, setSelectedMealDay] = useState<{
+    dateStr: string;
+    isToday: boolean;
+    items: DashboardMealPlanItem[];
+  } | null>(null);
   const [dailyQuote, setDailyQuote] = useState<string>(pickByDate(BUILT_IN_QUOTES));
   const quoteIcon = useMemo(() => pickByDate(QUOTE_ICONS), []);
+
+  // 看板翻页：0=主页（食谱/留言），1=学习计划
+  const [dashboardPage, setDashboardPage] = useState(0);
+  // 学习计划日期偏移（0=今天，-1=昨天，+1=明天）
+  const [scheduleDayOffset, setScheduleDayOffset] = useState(0);
+  // 完成备注弹窗
+  const [completingScheduleItem, setCompletingScheduleItem] = useState<TodayScheduleItem | null>(null);
+  const [scheduleNote, setScheduleNote] = useState("");
+  // 学习计划放大弹窗
+  const [scheduleFullscreen, setScheduleFullscreen] = useState(false);
 
   // ── 屏保模式 ──
   const [screensaver, setScreensaver] = useState(false);
@@ -481,7 +502,47 @@ export function Dashboard() {
           flex: 1,
           overflow: "auto",
           padding: "20px 32px 20px",
+          position: "relative",
         }}>
+        {/* 页面导航指示器 */}
+        <div style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 8,
+          marginBottom: 16,
+        }}>
+          <button
+            onClick={() => setDashboardPage(0)}
+            style={{
+              width: dashboardPage === 0 ? 32 : 10,
+              height: 10,
+              borderRadius: 5,
+              border: "none",
+              background: dashboardPage === 0 ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.4)",
+              cursor: "pointer",
+              transition: "all 0.3s ease",
+            }}
+          />
+          <button
+            onClick={() => setDashboardPage(1)}
+            style={{
+              width: dashboardPage === 1 ? 32 : 10,
+              height: 10,
+              borderRadius: 5,
+              border: "none",
+              background: dashboardPage === 1 ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.4)",
+              cursor: "pointer",
+              transition: "all 0.3s ease",
+            }}
+          />
+          <span style={{ fontSize: 13, color: "rgba(255,255,255,0.7)", marginLeft: 8 }}>
+            {dashboardPage === 0 ? "家庭看板" : "学习计划"}
+          </span>
+        </div>
+
+        {dashboardPage === 0 ? (
+        <>
         {/* 两栏布局 */}
         <div style={{
           display: "grid",
@@ -526,6 +587,7 @@ export function Dashboard() {
                       return (
                         <div
                           key={day.dateStr}
+                          onClick={() => setSelectedMealDay({ dateStr: day.dateStr, isToday: day.isToday, items })}
                           style={{
                             flex: 1,
                             background: "#fff",
@@ -537,6 +599,7 @@ export function Dashboard() {
                             opacity: day.isPast ? 0.82 : 1,
                             filter: day.isPast ? "grayscale(0.12)" : "none",
                             transition: "all 0.3s ease",
+                            cursor: "pointer",
                           }}
                         >
                           <div style={{
@@ -743,6 +806,26 @@ export function Dashboard() {
             />
           </div>
         </div>
+        </>
+        ) : (
+        <>
+        {/* 学习计划页面 */}
+        <SchedulePage
+          todaySchedule={data.today_schedule || []}
+          dayOffset={scheduleDayOffset}
+          onDayOffsetChange={setScheduleDayOffset}
+          onMarkComplete={(item: TodayScheduleItem) => {
+            if (item.completed === 1) {
+              updateDailyItem(item.id, { completed: 0 }).catch(() => {});
+            } else {
+              setCompletingScheduleItem(item);
+              setScheduleNote("");
+            }
+          }}
+          onFullscreen={() => setScheduleFullscreen(true)}
+        />
+        </>
+        )}
         </div>
 
         {/* 旅游计划弹窗 */}
@@ -770,10 +853,332 @@ export function Dashboard() {
             />
           )}
         </Modal>
+
+        {/* 每日菜单详情弹窗 —— 适老化大字展示 */}
+        <Modal
+          open={!!selectedMealDay}
+          onCancel={() => setSelectedMealDay(null)}
+          footer={null}
+          width={600}
+          centered
+          destroyOnClose
+          title={
+            selectedMealDay ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <CalendarOutlined style={{ fontSize: 28, color: "#7c3aed" }} />
+                <span style={{ fontSize: 26, fontWeight: 700, color: "#1e293b" }}>
+                  {formatWeekendDate(selectedMealDay.dateStr)}
+                </span>
+                {selectedMealDay.isToday && (
+                  <span style={{
+                    fontSize: 16,
+                    background: "#7c3aed",
+                    color: "#fff",
+                    padding: "4px 14px",
+                    borderRadius: 10,
+                    fontWeight: 600,
+                  }}>今天</span>
+                )}
+              </div>
+            ) : null
+          }
+          styles={{
+            body: {
+              padding: "20px 24px 28px",
+              maxHeight: "70vh",
+              overflowY: "auto",
+            },
+          }}
+        >
+          {selectedMealDay && (() => {
+            const byType: Record<string, typeof selectedMealDay.items> = {};
+            for (const item of selectedMealDay.items) {
+              if (!byType[item.meal_type]) byType[item.meal_type] = [];
+              byType[item.meal_type].push(item);
+            }
+            return Object.entries(byType).map(([mealType, mealItems]) => {
+              const config = MEAL_TYPE_CONFIG[mealType] || { label: mealType, color: "#6b7280" };
+              return (
+                <div key={mealType} style={{ marginBottom: 24 }}>
+                  <div style={{
+                    fontSize: 22,
+                    fontWeight: 700,
+                    color: config.color,
+                    marginBottom: 14,
+                    borderBottom: `2px solid ${config.color}30`,
+                    paddingBottom: 8,
+                  }}>
+                    {config.label}
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                    {mealItems.map((item) => {
+                      const photo = item.dish.photo;
+                      return (
+                        <div
+                          key={item.id}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 16,
+                            background: "#f8fafc",
+                            borderRadius: 14,
+                            padding: "12px 18px",
+                            border: "1px solid #e5e7eb",
+                          }}
+                        >
+                          {photo ? (
+                            <Image
+                              src={mealPhotoToUrl(photo)}
+                              alt={item.dish.name}
+                              width={64}
+                              height={64}
+                              style={{
+                                borderRadius: 12,
+                                objectFit: "cover",
+                                flexShrink: 0,
+                                border: "1px solid #e5e7eb",
+                              }}
+                              preview={{ src: mealPhotoToUrl(photo) }}
+                              fallback="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHJ4PSIxMiIgZmlsbD0iI2YxZjVmOSIvPjwvc3ZnPg=="
+                            />
+                          ) : (
+                            <div style={{
+                              width: 64,
+                              height: 64,
+                              borderRadius: 12,
+                              background: `${config.color}15`,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              flexShrink: 0,
+                              fontSize: 30,
+                            }}>
+                              🍽️
+                            </div>
+                          )}
+                          <div style={{ flex: 1 }}>
+                            <div style={{
+                              fontSize: 24,
+                              fontWeight: 700,
+                              color: "#1e293b",
+                              lineHeight: 1.3,
+                            }}>
+                              {item.dish.name}
+                            </div>
+                            {item.dish.category && (
+                              <span style={{
+                                display: "inline-block",
+                                marginTop: 4,
+                                fontSize: 16,
+                                color: config.color,
+                                background: `${config.color}15`,
+                                padding: "2px 12px",
+                                borderRadius: 8,
+                                fontWeight: 500,
+                              }}>
+                                {item.dish.category}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            });
+          })()}
+        </Modal>
+
+        {/* 学习计划完成备注弹窗 */}
+        <Modal
+          open={!!completingScheduleItem}
+          onCancel={() => setCompletingScheduleItem(null)}
+          onOk={async () => {
+            if (!completingScheduleItem) return;
+            try {
+              await updateDailyItem(completingScheduleItem.id, {
+                completed: 1,
+                completion_note: scheduleNote.trim() || undefined,
+              });
+              setCompletingScheduleItem(null);
+            } catch {}
+          }}
+          okText="确认完成"
+          cancelText="取消"
+          title="完成备注"
+        >
+          <div style={{ marginBottom: 8 }}>
+            <Text type="secondary">
+              为 <Text strong>{completingScheduleItem?.activity_type?.icon} {completingScheduleItem?.activity_type?.name}</Text> 添加备注（可选）
+            </Text>
+          </div>
+          <Input.TextArea
+            value={scheduleNote}
+            onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setScheduleNote(e.target.value)}
+            placeholder="例如：数学作业全对，语文抄写认真"
+            rows={3}
+            maxLength={200}
+          />
+        </Modal>
       </div>
     </div>
   );
 }
+
+/* ───────── memo：学习计划页 ───────── */
+const SchedulePage = memo(function SchedulePage({
+  todaySchedule,
+  dayOffset,
+  onDayOffsetChange,
+  onMarkComplete,
+  onFullscreen,
+}: {
+  todaySchedule: TodayScheduleItem[];
+  dayOffset: number;
+  onDayOffsetChange: (n: number) => void;
+  onMarkComplete: (item: TodayScheduleItem) => void;
+  onFullscreen: () => void;
+}) {
+  const d = new Date();
+  d.setDate(d.getDate() + dayOffset);
+  const month = d.getMonth() + 1;
+  const day = d.getDate();
+  const dayOfWeek = d.getDay();
+  const weekday = WEEKDAY_NAMES[dayOfWeek === 0 ? 6 : dayOfWeek - 1];
+  const isToday = dayOffset === 0;
+
+  return (
+    <div style={{
+      borderRadius: 16,
+      padding: "20px 24px",
+      background: "rgba(255,255,255,0.1)",
+      backdropFilter: "blur(12px)",
+      minHeight: "60vh",
+    }}>
+      {/* 顶部：日期 + 翻页 + 放大 */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <Button
+            icon={<LeftOutlined />}
+            size="small"
+            onClick={() => onDayOffsetChange(dayOffset - 1)}
+            style={{ borderRadius: 8 }}
+          />
+          <div>
+            <span style={{ fontSize: 22, fontWeight: 700, color: "#fff", textShadow: "0 2px 8px rgba(0,0,0,0.3)" }}>
+              {month}月{day}日 {weekday}
+            </span>
+            {isToday && (
+              <span style={{
+                marginLeft: 10,
+                fontSize: 13,
+                background: "#7c3aed",
+                color: "#fff",
+                padding: "2px 10px",
+                borderRadius: 8,
+                fontWeight: 600,
+              }}>今天</span>
+            )}
+          </div>
+          <Button
+            icon={<RightOutlined />}
+            size="small"
+            onClick={() => onDayOffsetChange(dayOffset + 1)}
+            style={{ borderRadius: 8 }}
+          />
+        </div>
+        <Button
+          type="text"
+          icon={<span style={{ fontSize: 18 }}>⛶</span>}
+          onClick={onFullscreen}
+          style={{ color: "rgba(255,255,255,0.7)" }}
+        />
+      </div>
+
+      {/* 活动列表 */}
+      {todaySchedule.length === 0 ? (
+        <div style={{ textAlign: "center", color: "rgba(255,255,255,0.6)", padding: "60px 0", fontSize: 18 }}>
+          今天暂无学习计划 🎉
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {todaySchedule.map((item: TodayScheduleItem) => {
+            const done = item.completed === 1;
+            const icon = item.activity_type?.icon || "📋";
+            const name = item.activity_type?.name || "未知活动";
+            const color = item.activity_type?.color || "#6b7280";
+            return (
+              <div
+                key={item.id}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 16,
+                  background: done ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.15)",
+                  borderRadius: 14,
+                  padding: "14px 20px",
+                  border: `1px solid ${done ? "rgba(255,255,255,0.1)" : color + "50"}`,
+                  opacity: done ? 0.65 : 1,
+                  transition: "all 0.3s ease",
+                  cursor: "pointer",
+                }}
+                onClick={() => onMarkComplete(item)}
+              >
+                {/* 图标 */}
+                <div style={{
+                  fontSize: 36,
+                  width: 56,
+                  height: 56,
+                  borderRadius: 16,
+                  background: done ? "rgba(255,255,255,0.05)" : color + "25",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                  filter: done ? "grayscale(0.5)" : "none",
+                }}>
+                  {icon}
+                </div>
+                {/* 名称 */}
+                <div style={{ flex: 1 }}>
+                  <div style={{
+                    fontSize: 20,
+                    fontWeight: 600,
+                    color: done ? "rgba(255,255,255,0.5)" : "#fff",
+                    textDecoration: done ? "line-through" : "none",
+                  }}>
+                    {name}
+                  </div>
+                  {done && item.completion_note && (
+                    <div style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", marginTop: 4 }}>
+                      💬 {item.completion_note}
+                    </div>
+                  )}
+                </div>
+                {/* 勾选框 */}
+                <div style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: "50%",
+                  border: done ? "none" : `2px solid ${color}`,
+                  background: done ? "#22c55e" : "transparent",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                  transition: "all 0.3s ease",
+                }}>
+                  {done && <CheckCircleFilled style={{ fontSize: 22, color: "#fff" }} />}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+});
 
 /* ───────── memo：留言板 ───────── */
 const MessageSection = memo(function MessageSection({
@@ -802,13 +1207,15 @@ const MessageSection = memo(function MessageSection({
           const initial = authorName.charAt(0).toUpperCase();
           const avatarBg = getAvatarColor(authorName);
           const isPinned = !!msg.pinned;
+          const cardColor = resolveColor(msg.color);
+          const cardBg = isPinned ? "#fffbeb" : tintBackground(cardColor, 0.35);
 
           return (
             <div
               key={msg.id}
               style={{
-                background: isPinned ? "#fffbeb" : "#fff",
-                borderLeft: `4px solid ${resolveColor(msg.color)}`,
+                background: cardBg,
+                borderLeft: `8px solid ${cardColor}`,
                 borderRadius: 16,
                 padding: isPinned ? "16px 18px" : "14px 16px",
                 marginBottom: 12,

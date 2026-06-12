@@ -22,6 +22,18 @@ export function resolveColor(color: string): string {
   return NAMED_COLOR_MAP[color] || color;
 }
 
+/** 将 hex 颜色与白色混合，生成浅色背景（ratio 0~1，越小越白） */
+export function tintBackground(hex: string, ratio = 0.4): string {
+  const h = hex.replace("#", "");
+  if (h.length !== 6) return hex;
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  const blend = (c: number) => Math.round(c * ratio + 255 * (1 - ratio));
+  const toHex = (n: number) => n.toString(16).padStart(2, "0");
+  return `#${toHex(blend(r))}${toHex(blend(g))}${toHex(blend(b))}`;
+}
+
 /** 留言板推荐预设颜色 */
 export const PRESET_COLORS = [
   "#fef9c3", // 黄

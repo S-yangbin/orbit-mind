@@ -289,3 +289,69 @@ class BoardMessage(Base):
     acknowledged_by = Column(Text, nullable=True)  # JSON: [member_id, ...] 已确认的家庭成员
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+# ============================================================
+# Learning Plan (Children's Daily Schedule) Models
+# ============================================================
+
+class ActivityType(Base):
+    """Activity type for children's daily schedule."""
+    __tablename__ = "activity_types"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(50), nullable=False)
+    icon = Column(String(16), nullable=False, default="\U0001f4da")  # emoji icon
+    category = Column(String(20), nullable=False, default="custom")  # homework/reading/sports/arts/freeplay/custom
+    color = Column(String(16), nullable=False, default="#4A90D9")  # hex color
+    is_preset = Column(SmallInteger, nullable=False, default=0)  # 1=preset, 0=custom
+    sort_order = Column(Integer, nullable=False, default=0)
+    child_id = Column(Integer, nullable=True)  # reserved for multi-child support
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+class WeeklyTemplate(Base):
+    """Weekly schedule template."""
+    __tablename__ = "weekly_templates"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(50), nullable=False, default="默认周计划")
+    child_id = Column(Integer, nullable=True)  # reserved for multi-child support
+    is_active = Column(SmallInteger, nullable=False, default=1)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    days = relationship("WeeklyTemplateDay", back_populates="template", cascade="all, delete-orphan",
+                         order_by="WeeklyTemplateDay.day_of_week, WeeklyTemplateDay.sort_order")
+
+
+class WeeklyTemplateDay(Base):
+    """A single activity in a weekly template day."""
+    __tablename__ = "weekly_template_days"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    template_id = Column(Integer, ForeignKey("weekly_templates.id", ondelete="CASCADE"), nullable=False, index=True)
+    day_of_week = Column(Integer, nullable=False)  # 0=Monday ... 6=Sunday
+    activity_type_id = Column(Integer, ForeignKey("activity_types.id", ondelete="CASCADE"), nullable=False)
+    sort_order = Column(Integer, nullable=False, default=0)
+
+    template = relationship("WeeklyTemplate", back_populates="days")
+    activity_type = relationship("ActivityType")
+
+
+class DailySchedule(Base):
+    """Actual daily schedule for a specific date."""
+    __tablename__ = "daily_schedules"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    date = Column(Date, nullable=False, index=True)
+    child_id = Column(Integer, nullable=True)  # reserved for multi-child support
+    activity_type_id = Column(Integer, ForeignKey("activity_types.id", ondelete="CASCADE"), nullable=False)
+    completed = Column(SmallInteger, nullable=False, default=0)  # 0=pending, 1=completed
+    completed_at = Column(DateTime, nullable=True)
+    completion_note = Column(Text, nullable=True)  # note on completion
+    sort_order = Column(Integer, nullable=False, default=0)
+    is_override = Column(SmallInteger, nullable=False, default=0)  # 1=manually adjusted, 0=from template
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    activity_type = relationship("ActivityType")

@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from .config import settings
 from .database import init_db, SessionLocal, engine
 from .auth import get_current_user
-from .routers import auth, pages, tags, scan, nodes, commands, videos, meals, drive, board, dashboard
+from .routers import auth, pages, tags, scan, nodes, commands, videos, meals, drive, board, dashboard, schedule
 from .scanner import scan_directories
 from .ws.router import router as ws_router
 
@@ -85,6 +85,27 @@ def _migrate_db():
             logger.info("Migration: added 'board_color' column to family_members table")
 
 
+def _seed_activity_types():
+    """Insert preset activity types if table is empty."""
+    from .models import ActivityType
+    db = SessionLocal()
+    try:
+        count = db.query(ActivityType).count()
+        if count == 0:
+            presets = [
+                ActivityType(name="做作业", icon="\U0001f4dd", category="homework", color="#4A90D9", is_preset=1, sort_order=0),
+                ActivityType(name="读绘本", icon="\U0001f4d6", category="reading", color="#7CB342", is_preset=1, sort_order=1),
+                ActivityType(name="运动", icon="\U0001f3c0", category="sports", color="#FF7043", is_preset=1, sort_order=2),
+                ActivityType(name="才艺", icon="\u265f\ufe0f", category="arts", color="#AB47BC", is_preset=1, sort_order=3),
+                ActivityType(name="自由玩耍", icon="\U0001f3ae", category="freeplay", color="#FFB74D", is_preset=1, sort_order=4),
+            ]
+            db.add_all(presets)
+            db.commit()
+            logger.info("Seeded %d preset activity types.", len(presets))
+    finally:
+        db.close()
+
+
 def _start_background_scan():
     """Initial scan on startup, then periodic."""
     time.sleep(5)  # Wait for app to be ready
@@ -105,6 +126,7 @@ async def lifespan(app: FastAPI):
     logger.info("Starting up...")
     init_db()
     _migrate_db()
+    _seed_activity_types()
     logger.info("Database initialized.")
 
     # Ensure directories exist
@@ -155,6 +177,7 @@ app.include_router(meals.router)
 app.include_router(drive.router)
 app.include_router(board.router)
 app.include_router(dashboard.router)
+app.include_router(schedule.router)  # 学习计划
 app.include_router(ws_router)  # WebSocket路由
 
 
@@ -279,7 +302,6 @@ async def health():
 async def spa_fallback(full_path: str):
     # Don't catch API routes — they should return proper 404s
     if full_path.startswith("api/") or full_path.startswith("docs") or full_path.startswith("openapi.json") or full_path.startswith("redoc"):
-        from fastapi.responses import JSONResponse
         return JSONResponse({"detail": "Not Found"}, status_code=404)
     if FRONTEND_DIST.exists():
         index_html = FRONTEND_DIST / "index.html"

@@ -1,0 +1,69 @@
+diff --git a/es/hooks/useAlign.js b/es/hooks/useAlign.js
+index 3532e7ca1b0d557be5765a75aba017120cf112fd..bf1565c0eecc496b785f03544b2398726a6bd8ca 100644
+--- a/es/hooks/useAlign.js
++++ b/es/hooks/useAlign.js
+@@ -118,6 +118,12 @@ export default function useAlign(open, popupEle, target, placement, builtinPlace
+       var originBottom = popupElement.style.bottom;
+       var originOverflow = popupElement.style.overflow;
+ 
++      // PATCH: Disable transitions during measurement to prevent
++      // CSSTransition from interfering with getBoundingClientRect().
++      // See: https://github.com/react-component/trigger/issues/618
++      var originTransition = popupElement.style.transition;
++      popupElement.style.transition = 'none';
++
+       // Placement
+       var placementInfo = _objectSpread(_objectSpread({}, builtinPlacements[placement]), popupAlign);
+ 
+@@ -164,6 +170,19 @@ export default function useAlign(open, popupEle, target, placement, builtinPlace
+         width = _win$getComputedStyle2.width;
+       popupRect.x = (_popupRect$x = popupRect.x) !== null && _popupRect$x !== void 0 ? _popupRect$x : popupRect.left;
+       popupRect.y = (_popupRect$y = popupRect.y) !== null && _popupRect$y !== void 0 ? _popupRect$y : popupRect.top;
++
++      // PATCH: When prefers-reduced-motion CSS creates CSSTransitions,
++      // the style reset (left:0, top:0) is ignored by getBoundingClientRect.
++      // Derive popupRect from offsetParent instead.
++      // See: https://github.com/react-component/trigger/issues/618
++      if (popupElement.offsetParent) {
++        var _parentRect = popupElement.offsetParent.getBoundingClientRect();
++        popupRect.x = _parentRect.left;
++        popupRect.y = _parentRect.top;
++        popupRect.width = popupElement.offsetWidth;
++        popupRect.height = popupElement.offsetHeight;
++      }
++
+       var _doc$documentElement = doc.documentElement,
+         clientWidth = _doc$documentElement.clientWidth,
+         clientHeight = _doc$documentElement.clientHeight,
+@@ -217,6 +236,7 @@ export default function useAlign(open, popupEle, target, placement, builtinPlace
+       popupElement.style.right = originRight;
+       popupElement.style.bottom = originBottom;
+       popupElement.style.overflow = originOverflow;
++      popupElement.style.transition = originTransition;
+       (_popupElement$parentE2 = popupElement.parentElement) === null || _popupElement$parentE2 === void 0 || _popupElement$parentE2.removeChild(placeholderElement);
+ 
+       // Calculate scale
+diff --git a/lib/hooks/useAlign.js b/lib/hooks/useAlign.js
+index 3b1a5c79c5529a71761f9215334b5105b5df426f..a5f2bcbb847a323dd3bb253ad42858c62a7fd148 100644
+--- a/lib/hooks/useAlign.js
++++ b/lib/hooks/useAlign.js
+@@ -172,6 +172,19 @@ function useAlign(open, popupEle, target, placement, builtinPlacements, popupAli
+         width = _win$getComputedStyle2.width;
+       popupRect.x = (_popupRect$x = popupRect.x) !== null && _popupRect$x !== void 0 ? _popupRect$x : popupRect.left;
+       popupRect.y = (_popupRect$y = popupRect.y) !== null && _popupRect$y !== void 0 ? _popupRect$y : popupRect.top;
++
++      // PATCH: When prefers-reduced-motion CSS creates CSSTransitions,
++      // the style reset (left:0, top:0) is ignored by getBoundingClientRect.
++      // Derive popupRect from offsetParent instead.
++      // See: https://github.com/react-component/trigger/issues/618
++      if (popupElement.offsetParent) {
++        var _parentRect = popupElement.offsetParent.getBoundingClientRect();
++        popupRect.x = _parentRect.left;
++        popupRect.y = _parentRect.top;
++        popupRect.width = popupElement.offsetWidth;
++        popupRect.height = popupElement.offsetHeight;
++      }
++
+       var _doc$documentElement = doc.documentElement,
+         clientWidth = _doc$documentElement.clientWidth,
+         clientHeight = _doc$documentElement.clientHeight,
