@@ -391,6 +391,7 @@ export interface DashboardData {
   weather_forecast: WeatherForecastItem[] | null;
   background_image: string | null;
   today_schedule: TodayScheduleItem[];
+  star_summary: StarSummary;
 }
 
 export interface DashboardWsMessage {
@@ -493,5 +494,34 @@ export interface TodayScheduleItem {
   completion_note: string | null;
   sort_order: number;
   is_override: number;
+}
+
+// --- Star Reward ---
+
+export interface StarReward {
+  id: number;
+  child_id: number | null;
+  stars: number;
+  reason: string | null;
+  related_schedule_id: number | null;
+  awarded_by: string;
+  redeemed: number;
+  redeemed_at: string | null;
+  created_at: string;
+}
+
+export interface StarRewardCreate {
+  stars: number;
+  awarded_by: string;
+  reason?: string;
+  related_schedule_id?: number;
+}
+
+export interface StarSummary {
+  total_stars: number;
+  total_value: number;
+  unredeemed_stars: number;
+  unredeemed_value: number;
+  recent_stars: StarReward[];
 }
 

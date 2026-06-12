@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from .config import settings
 from .database import init_db, SessionLocal, engine
 from .auth import get_current_user
-from .routers import auth, pages, tags, scan, nodes, commands, videos, meals, drive, board, dashboard, schedule
+from .routers import auth, pages, tags, scan, nodes, commands, videos, meals, drive, board, dashboard, schedule, stars
 from .scanner import scan_directories
 from .ws.router import router as ws_router
 
@@ -87,6 +87,31 @@ def _migrate_db():
                 conn.commit()
             logger.info("Migration: added 'board_color' column to family_members table")
 
+    # star_rewards: create table if not exists
+    if 'star_rewards' not in inspector.get_table_names():
+        fk_clause = ""
+        if is_mysql:
+            fk_clause = ", FOREIGN KEY (related_schedule_id) REFERENCES daily_schedules(id) ON DELETE SET NULL"
+        else:
+            fk_clause = ", FOREIGN KEY (related_schedule_id) REFERENCES daily_schedules(id) ON DELETE SET NULL"
+        with engine.connect() as conn:
+            conn.execute(text(
+                f"CREATE TABLE star_rewards ("
+                f"  id INTEGER PRIMARY KEY {'AUTOINCREMENT' if not is_mysql else 'AUTO_INCREMENT'},"
+                f"  child_id INTEGER NULL,"
+                f"  stars INTEGER NOT NULL,"
+                f"  reason VARCHAR(200) NULL,"
+                f"  related_schedule_id INTEGER NULL,"
+                f"  awarded_by VARCHAR(50) NOT NULL,"
+                f"  redeemed {('TINYINT' if is_mysql else 'SMALLINT')} NOT NULL DEFAULT 0,"
+                f"  redeemed_at DATETIME NULL,"
+                f"  created_at DATETIME NOT NULL"
+                f"  {fk_clause}"
+                f")"
+            ))
+            conn.commit()
+        logger.info("Migration: created 'star_rewards' table")
+
 
 def _start_background_scan():
     """Initial scan on startup, then periodic."""
@@ -159,6 +184,7 @@ app.include_router(drive.router)
 app.include_router(board.router)
 app.include_router(dashboard.router)
 app.include_router(schedule.router)  # 学习计划
+app.include_router(stars.router)  # 星星奖励
 app.include_router(ws_router)  # WebSocket路由
 
 

@@ -817,3 +817,46 @@ class MarsClient:
         self._ensure_auth()
         resp = self.session.delete(self._url(f"/api/schedule/daily/{item_id}"), timeout=15)
         return self._handle_response(resp)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Star Rewards
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def star_summary(self) -> Dict[str, Any]:
+        """GET /api/stars/summary — 获取星星汇总（总数、可兑换金额、近期记录）。"""
+        self._ensure_auth()
+        resp = self.session.get(self._url("/api/stars/summary"), timeout=15)
+        return self._handle_response(resp)
+
+    def star_list(self, date: Optional[str] = None) -> Dict[str, Any]:
+        """GET /api/stars — 获取星星记录列表，可按日期筛选。"""
+        self._ensure_auth()
+        params: Dict[str, Any] = {}
+        if date:
+            params["date"] = date
+        resp = self.session.get(self._url("/api/stars"), params=params, timeout=15)
+        return self._handle_response(resp)
+
+    def star_add(self, stars: int, awarded_by: str, reason: Optional[str] = None,
+                 schedule_id: Optional[int] = None) -> Dict[str, Any]:
+        """POST /api/stars — 添加星星奖励。"""
+        self._ensure_auth()
+        body: Dict[str, Any] = {"stars": stars, "awarded_by": awarded_by}
+        if reason:
+            body["reason"] = reason
+        if schedule_id is not None:
+            body["related_schedule_id"] = schedule_id
+        resp = self.session.post(self._url("/api/stars"), json=body, timeout=15)
+        return self._handle_response(resp)
+
+    def star_redeem(self, star_id: int) -> Dict[str, Any]:
+        """POST /api/stars/{id}/redeem — 兑换星星。"""
+        self._ensure_auth()
+        resp = self.session.post(self._url(f"/api/stars/{star_id}/redeem"), timeout=15)
+        return self._handle_response(resp)
+
+    def star_delete(self, star_id: int) -> Dict[str, Any]:
+        """DELETE /api/stars/{id} — 删除星星记录（撤回）。"""
+        self._ensure_auth()
+        resp = self.session.delete(self._url(f"/api/stars/{star_id}"), timeout=15)
+        return self._handle_response(resp)

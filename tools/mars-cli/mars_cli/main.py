@@ -40,6 +40,7 @@ from mars_cli import cmd_scan
 from mars_cli import cmd_config
 from mars_cli import cmd_dashboard
 from mars_cli import cmd_schedule
+from mars_cli import cmd_stars
 
 # ─── Typer App ─────────────────────────────────────────────────────────────
 
@@ -71,6 +72,8 @@ app = typer.Typer(
         "  mars-cli dashboard switch-page -p 1       # 切换到学习计划页\n"
         "  mars-cli schedule today                  # 查看今天的学习计划\n"
         "  mars-cli schedule complete <id> --note '...'  # 标记完成并备注\n"
+        "  mars-cli stars summary                   # 查看星星汇总\n"
+        "  mars-cli stars add 3 -a '妈妈' -r '作业优秀'  # 奖励 3 颗星星\n"
     ),
     add_completion=False,
     no_args_is_help=True,
@@ -140,6 +143,7 @@ app.add_typer(cmd_scan.app, name="scan", help="页面目录扫描")
 app.add_typer(cmd_config.app, name="config", help="管理 CLI 配置文件")
 app.add_typer(cmd_dashboard.app, name="dashboard", help="家庭看板管理（壁纸、播报、翻页）")
 app.add_typer(cmd_schedule.app, name="schedule", help="儿童学习计划管理（活动类型、周模板、每日计划）")
+app.add_typer(cmd_stars.app, name="stars", help="星星奖励管理（查看、颁发、兑换、删除）")
 
 
 # ─── 顶层命令: 健康检查 ────────────────────────────────────────────────────

@@ -3,13 +3,15 @@ name: mars-cli
 description: >-
   mars-sandbox 家庭中枢管理平台 CLI 客户端。通过终端执行 mars-cli 命令，
   管理远程节点、留言板、餐饮计划、视频学习、云盘、页面、标签、看板壁纸、
-  儿童学习计划等。
+  儿童学习计划、星星奖励等。
   看板壁纸支持从 Bing + Pexels 壁纸池（约23张）随机刷新。
   支持语音播报留言板、学习计划、今日菜谱等内容到 Dashboard。
   支持远程切换屏保模式、切换页面。
+  支持星星奖励系统：颁发星星、查看汇总、兑换、撤回。
   当用户提到：家庭服务器、留言板、餐饮计划、菜单、视频学习、云盘文件、
   页面管理、节点管理、远程命令执行、刷新壁纸、换壁纸、看板、
-  学习计划、作业、课程安排、今日计划、播报、朗读、语音播放、屏保、熄屏时触发。
+  学习计划、作业、课程安排、今日计划、播报、朗读、语音播放、屏保、熄屏、
+  星星、奖励、积分、兑换时触发。
   当用户说「让小皮帮我做xxx」或提到「小皮」相关请求时，也应触发本 Skill。
 compatibility: Requires mars-cli installed on the server, and mars-sandbox service running.
 metadata:
@@ -52,10 +54,11 @@ required_environment_variables:
 - 查看节点状态
 - 刷新看板壁纸
 - 管理儿童学习计划（活动类型、周模板、每日计划、完成情况）
+- 管理星星奖励（颁发、查看、兑换、撤回）
 - 语音播报留言板、学习计划、今日菜谱等内容到 Dashboard
 - 控制看板进入屏保模式或唤醒看板
 
-触发关键词：家庭服务器、留言板、餐饮计划、菜单、吃什么、视频学习、云盘、页面管理、节点、远程命令、壁纸、看板、学习计划、作业、今日计划、播报、朗读、语音播放、TTS、屏保、熄屏
+触发关键词：家庭服务器、留言板、餐饮计划、菜单、吃什么、视频学习、云盘、页面管理、节点、远程命令、壁纸、看板、学习计划、作业、今日计划、播报、朗读、语音播放、TTS、屏保、熄屏、星星、奖励、积分、兑换
 
 ## 前提条件
 
@@ -109,6 +112,7 @@ mars-cli health
 | 扫描 | `mars-cli scan` | 页面目录扫描 | API Key |
 | 看板 | `mars-cli dashboard` | 壁纸刷新等看板管理 | Cookie（自动登录）/ API Key |
 | 学习计划 | `mars-cli schedule` | 活动类型、周模板、每日计划 | Cookie（自动登录） |
+| 星星奖励 | `mars-cli stars` | 星星奖励与兑换 | Cookie（自动登录） |
 
 ## 命令参考
 
@@ -324,6 +328,27 @@ mars-cli schedule remove <item_id>
 | `schedule uncomplete <id>` | 取消完成标记 |
 | `schedule remove <id>` | 删除某天的活动 |
 
+### 星星奖励 (`stars`)
+
+```bash
+mars-cli stars summary
+mars-cli stars list [--date YYYY-MM-DD]
+mars-cli stars add <stars> -a '<颁发者>' [-r '<原因>'] [--schedule-id <id>]
+mars-cli stars redeem <star_id>
+mars-cli stars delete <star_id>
+```
+
+| 命令 | 说明 |
+|------|------|
+| `stars summary` | 查看星星汇总（总数、可兑换金额、近期记录） |
+| `stars list` | 查看星星记录列表 |
+| `stars list --date 2025-07-10` | 查看某天的星星记录 |
+| `stars add <数量> -a '<颁发者>'` | 颁发星星奖励 |
+| `stars add 3 -a '妈妈' -r '作业优秀'` | 颁发 3 颗星并附原因 |
+| `stars add 2 -a '爸爸' --schedule-id 12` | 颁发星星并关联学习计划项 |
+| `stars redeem <id>` | 兑换星星 |
+| `stars delete <id>` | 删除星星记录（撤回） |
+
 ## 常见使用场景
 
 ### 查看家庭服务器状态
@@ -447,6 +472,31 @@ mars-cli schedule daily 2025-07-10
 
 # 手动添加活动
 mars-cli schedule add 2025-07-10 3
+```
+
+### 管理星星奖励
+
+```bash
+# 查看星星汇总（总数、可兑换金额、近期记录）
+mars-cli stars summary
+
+# 查看星星记录列表
+mars-cli stars list
+
+# 查看某天的星星记录
+mars-cli stars list --date 2025-07-10
+
+# 奖励 3 颗星星
+mars-cli stars add 3 -a '妈妈' -r '数学作业全对'
+
+# 奖励星星并关联学习计划项
+mars-cli stars add 2 -a '爸爸' -r '读绘本很认真' --schedule-id 12
+
+# 兑换星星
+mars-cli stars redeem 5
+
+# 删除星星记录（撤回误操作）
+mars-cli stars delete 3
 ```
 
 壁纸来源：Bing 每日精选（8张）+ Pexels 随机风景（15张，8种主题轮换）+ AI 生成（按季节主题自动选择，支持自定义提示词）。

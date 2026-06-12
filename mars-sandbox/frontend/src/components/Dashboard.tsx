@@ -14,6 +14,7 @@ import {
 } from "@ant-design/icons";
 import { DashboardPets } from "./DashboardPets";
 import { DashboardButterflies } from "./DashboardButterflies";
+import { StarWall } from "./StarWall";
 import { useDashboardWs } from "../hooks/useDashboardWs";
 import { updateDailyItem, fetchDailySchedule } from "../api/schedule";
 import { resolveColor, tintBackground, formatBoardDateTime, mealPhotoToUrl } from "../utils";
@@ -291,6 +292,7 @@ export function Dashboard() {
   // ── 手势滑动切换页面 ──
   const swipeStartXRef = useRef<number | null>(null);
   const swipeStartYRef = useRef<number | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const SWIPE_THRESHOLD = 60; // 最小滑动距离 (px)
@@ -342,6 +344,13 @@ export function Dashboard() {
       document.removeEventListener("touchend", handleTouchEnd);
     };
   }, [screensaver, dashboardPage]);
+
+  // 页面切换时重置滚动位置
+  useEffect(() => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = 0;
+    }
+  }, [dashboardPage]);
 
   // 每分钟刷新（用于夜间模式判断）
   useEffect(() => {
@@ -667,7 +676,7 @@ export function Dashboard() {
         </div>
 
         {/* 可滚动内容区 */}
-        <div style={{
+        <div ref={scrollContainerRef} style={{
           flex: 1,
           overflow: "auto",
           padding: "20px 32px 20px",
@@ -716,8 +725,16 @@ export function Dashboard() {
           </span>
         </div>
 
-        {dashboardPage === 0 ? (
-        <>
+        {/* 滑动容器：两页并排，通过 translateX 平滑切换 */}
+        <div style={{ overflow: "hidden" }}>
+        <div style={{
+          display: "flex",
+          width: "200%",
+          transform: `translateX(-${dashboardPage * 50}%)`,
+          transition: "transform 0.38s cubic-bezier(0.4, 0, 0.2, 1)",
+          willChange: "transform",
+        }}>
+        <div style={{ width: "50%" }}>
         {/* 两栏布局 */}
         <div style={{
           display: "grid",
@@ -981,9 +998,8 @@ export function Dashboard() {
             />
           </div>
         </div>
-        </>
-        ) : (
-        <>
+        </div>
+        <div style={{ width: "50%" }}>
         {/* 学习计划页面 */}
         <SchedulePage
           todaySchedule={offsetSchedule !== null ? offsetSchedule : (data.today_schedule || [])}
@@ -1000,9 +1016,11 @@ export function Dashboard() {
             }
           }}
           onFullscreen={() => setScheduleFullscreen(true)}
+          starSummary={data.star_summary}
         />
-        </>
-        )}
+        </div>
+        </div>
+        </div>
         </div>
 
         {/* 旅游计划弹窗 */}
@@ -1211,12 +1229,14 @@ const SchedulePage = memo(function SchedulePage({
   onDayOffsetChange,
   onMarkComplete,
   onFullscreen,
+  starSummary,
 }: {
   todaySchedule: TodayScheduleItem[];
   dayOffset: number;
   onDayOffsetChange: (n: number) => void;
   onMarkComplete: (item: TodayScheduleItem) => void;
   onFullscreen: () => void;
+  starSummary: import("../types").StarSummary | undefined;
 }) {
   const d = new Date();
   d.setDate(d.getDate() + dayOffset);
@@ -1228,132 +1248,147 @@ const SchedulePage = memo(function SchedulePage({
 
   return (
     <div style={{
-      borderRadius: 16,
-      padding: "20px 24px",
-      background: "rgba(255,255,255,0.1)",
-      backdropFilter: "blur(12px)",
+      display: "flex",
+      gap: 16,
       minHeight: "60vh",
     }}>
-      {/* 顶部：日期 + 翻页 + 放大 */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <Button
-            icon={<LeftOutlined />}
-            size="small"
-            onClick={() => onDayOffsetChange(dayOffset - 1)}
-            style={{ borderRadius: 8 }}
-          />
-          <div>
-            <span style={{ fontSize: 22, fontWeight: 700, color: "#fff", textShadow: "0 2px 8px rgba(0,0,0,0.3)" }}>
-              {month}月{day}日 {weekday}
-            </span>
-            {isToday && (
-              <span style={{
-                marginLeft: 10,
-                fontSize: 13,
-                background: "#7c3aed",
-                color: "#fff",
-                padding: "2px 10px",
-                borderRadius: 8,
-                fontWeight: 600,
-              }}>今天</span>
-            )}
+      {/* Left: Schedule list (1/3) */}
+      <div style={{
+        flex: 1,
+        borderRadius: 16,
+        padding: "16px 18px",
+        background: "rgba(255,255,255,0.1)",
+        backdropFilter: "blur(12px)",
+        display: "flex",
+        flexDirection: "column",
+        minWidth: 0,
+      }}>
+        {/* Header: date + nav + fullscreen */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Button
+              icon={<LeftOutlined />}
+              size="small"
+              onClick={() => onDayOffsetChange(dayOffset - 1)}
+              style={{ borderRadius: 8 }}
+            />
+            <div>
+              <span style={{ fontSize: 17, fontWeight: 700, color: "#fff", textShadow: "0 2px 8px rgba(0,0,0,0.3)" }}>
+                {month}月{day}日 {weekday}
+              </span>
+              {isToday && (
+                <span style={{
+                  marginLeft: 6,
+                  fontSize: 11,
+                  background: "#7c3aed",
+                  color: "#fff",
+                  padding: "1px 8px",
+                  borderRadius: 6,
+                  fontWeight: 600,
+                }}>今天</span>
+              )}
+            </div>
+            <Button
+              icon={<RightOutlined />}
+              size="small"
+              onClick={() => onDayOffsetChange(dayOffset + 1)}
+              style={{ borderRadius: 8 }}
+            />
           </div>
           <Button
-            icon={<RightOutlined />}
-            size="small"
-            onClick={() => onDayOffsetChange(dayOffset + 1)}
-            style={{ borderRadius: 8 }}
+            type="text"
+            icon={<span style={{ fontSize: 16 }}>⛶</span>}
+            onClick={onFullscreen}
+            style={{ color: "rgba(255,255,255,0.7)" }}
           />
         </div>
-        <Button
-          type="text"
-          icon={<span style={{ fontSize: 18 }}>⛶</span>}
-          onClick={onFullscreen}
-          style={{ color: "rgba(255,255,255,0.7)" }}
-        />
+
+        {/* Activity list */}
+        {todaySchedule.length === 0 ? (
+          <div style={{ textAlign: "center", color: "rgba(255,255,255,0.6)", padding: "40px 0", fontSize: 15 }}>
+            {isToday ? "今天暂无学习计划" : "当天暂无学习计划"}
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: 1, overflowY: "auto" }}>
+            {todaySchedule.map((item: TodayScheduleItem) => {
+              const done = item.completed === 1;
+              const icon = item.activity_type?.icon || "📋";
+              const name = item.activity_type?.name || "未知活动";
+              const color = item.activity_type?.color || "#6b7280";
+              return (
+                <div
+                  key={item.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    background: done ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0.12)",
+                    borderRadius: 12,
+                    padding: "10px 12px",
+                    border: `1px solid ${done ? "rgba(255,255,255,0.08)" : color + "40"}`,
+                    opacity: done ? 0.6 : 1,
+                    transition: "all 0.3s ease",
+                    cursor: "pointer",
+                  }}
+                  onClick={() => onMarkComplete(item)}
+                >
+                  <div style={{
+                    fontSize: 24,
+                    width: 40,
+                    height: 40,
+                    borderRadius: 10,
+                    background: done ? "rgba(255,255,255,0.05)" : color + "25",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                    filter: done ? "grayscale(0.5)" : "none",
+                  }}>
+                    {icon}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{
+                      fontSize: 14,
+                      fontWeight: 600,
+                      color: done ? "rgba(255,255,255,0.5)" : "#fff",
+                      textDecoration: done ? "line-through" : "none",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}>
+                      {name}
+                    </div>
+                    {done && item.completion_note && (
+                      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.45)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        💬 {item.completion_note}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{
+                    width: 26,
+                    height: 26,
+                    borderRadius: "50%",
+                    border: done ? "none" : `2px solid ${color}`,
+                    background: done ? "#22c55e" : "transparent",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                    transition: "all 0.3s ease",
+                  }}>
+                    {done && <CheckCircleFilled style={{ fontSize: 16, color: "#fff" }} />}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
-      {/* 活动列表 */}
-      {todaySchedule.length === 0 ? (
-        <div style={{ textAlign: "center", color: "rgba(255,255,255,0.6)", padding: "60px 0", fontSize: 18 }}>
-          {isToday ? "今天暂无学习计划 🎉" : "当天暂无学习计划"}
-        </div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {todaySchedule.map((item: TodayScheduleItem) => {
-            const done = item.completed === 1;
-            const icon = item.activity_type?.icon || "📋";
-            const name = item.activity_type?.name || "未知活动";
-            const color = item.activity_type?.color || "#6b7280";
-            return (
-              <div
-                key={item.id}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 16,
-                  background: done ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.15)",
-                  borderRadius: 14,
-                  padding: "14px 20px",
-                  border: `1px solid ${done ? "rgba(255,255,255,0.1)" : color + "50"}`,
-                  opacity: done ? 0.65 : 1,
-                  transition: "all 0.3s ease",
-                  cursor: "pointer",
-                }}
-                onClick={() => onMarkComplete(item)}
-              >
-                {/* 图标 */}
-                <div style={{
-                  fontSize: 36,
-                  width: 56,
-                  height: 56,
-                  borderRadius: 16,
-                  background: done ? "rgba(255,255,255,0.05)" : color + "25",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexShrink: 0,
-                  filter: done ? "grayscale(0.5)" : "none",
-                }}>
-                  {icon}
-                </div>
-                {/* 名称 */}
-                <div style={{ flex: 1 }}>
-                  <div style={{
-                    fontSize: 20,
-                    fontWeight: 600,
-                    color: done ? "rgba(255,255,255,0.5)" : "#fff",
-                    textDecoration: done ? "line-through" : "none",
-                  }}>
-                    {name}
-                  </div>
-                  {done && item.completion_note && (
-                    <div style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", marginTop: 4 }}>
-                      💬 {item.completion_note}
-                    </div>
-                  )}
-                </div>
-                {/* 勾选框 */}
-                <div style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: "50%",
-                  border: done ? "none" : `2px solid ${color}`,
-                  background: done ? "#22c55e" : "transparent",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexShrink: 0,
-                  transition: "all 0.3s ease",
-                }}>
-                  {done && <CheckCircleFilled style={{ fontSize: 22, color: "#fff" }} />}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+      {/* Right: Star Wall (2/3) */}
+      <div style={{ flex: 2, minWidth: 0 }}>
+        <StarWall starSummary={starSummary} />
+      </div>
     </div>
   );
 });

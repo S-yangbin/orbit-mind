@@ -16,12 +16,13 @@ from typing import Set, Optional
 
 
 from sqlalchemy.orm import joinedload
+from sqlalchemy import func
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from ..database import SessionLocal
 from ..models import (
     BoardMessage, Page, MealPlan, MealPlanItem, MealLog, Dish, FamilyMember,
-    DailySchedule, ActivityType, WeeklyTemplate, WeeklyTemplateDay,
+    DailySchedule, ActivityType, WeeklyTemplate, WeeklyTemplateDay, StarReward,
 )
 from ..services.ai_service import generate_wallpaper as _ai_generate_wallpaper
 from ..utils.json_helpers import parse_json_field, parse_acknowledged_by
@@ -1045,6 +1046,44 @@ def _get_today_schedule(db) -> list[dict]:
     ]
 
 
+def _get_star_summary(db) -> dict:
+    """获取星星汇总数据"""
+    STARS_PER_YUAN = 3
+
+    total_stars = int(db.query(func.coalesce(func.sum(StarReward.stars), 0)).scalar())
+    unredeemed_stars = int(
+        db.query(func.coalesce(func.sum(StarReward.stars), 0))
+        .filter(StarReward.redeemed == 0)
+        .scalar()
+    )
+
+    recent = (
+        db.query(StarReward)
+        .order_by(StarReward.created_at.desc())
+        .limit(20)
+        .all()
+    )
+
+    return {
+        "total_stars": total_stars,
+        "total_value": total_stars * STARS_PER_YUAN,
+        "unredeemed_stars": unredeemed_stars,
+        "unredeemed_value": unredeemed_stars * STARS_PER_YUAN,
+        "recent_stars": [
+            {
+                "id": r.id,
+                "stars": r.stars,
+                "reason": r.reason,
+                "awarded_by": r.awarded_by,
+                "redeemed": r.redeemed,
+                "redeemed_at": r.redeemed_at.isoformat() if r.redeemed_at else None,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in recent
+        ],
+    }
+
+
 def _get_db_dashboard_data(db) -> dict:
     """获取数据库相关的看板数据（同步，本地查询很快）"""
     return {
@@ -1054,6 +1093,7 @@ def _get_db_dashboard_data(db) -> dict:
         "messages": _get_board_messages(db),
         "family_members": _get_family_members(db),
         "today_schedule": _get_today_schedule(db),
+        "star_summary": _get_star_summary(db),
     }
 
 

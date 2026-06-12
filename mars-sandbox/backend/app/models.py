@@ -340,6 +340,25 @@ class WeeklyTemplateDay(Base):
     activity_type = relationship("ActivityType")
 
 
+# ============================================================
+# Star Reward Models
+# ============================================================
+
+class StarReward(Base):
+    """Star reward record for children's learning achievements."""
+    __tablename__ = "star_rewards"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    child_id = Column(Integer, nullable=True)  # reserved for multi-child support
+    stars = Column(Integer, nullable=False)  # number of stars awarded this time
+    reason = Column(String(200), nullable=True)  # reason, e.g. "数学作业完成优秀"
+    related_schedule_id = Column(Integer, ForeignKey("daily_schedules.id", ondelete="SET NULL"), nullable=True)
+    awarded_by = Column(String(50), nullable=False)  # who awarded (parent name)
+    redeemed = Column(SmallInteger, nullable=False, default=0)  # 0=not redeemed, 1=redeemed
+    redeemed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=beijing_now)
+
+
 class DailySchedule(Base):
     """Actual daily schedule for a specific date."""
     __tablename__ = "daily_schedules"

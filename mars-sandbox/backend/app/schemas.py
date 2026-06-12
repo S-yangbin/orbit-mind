@@ -643,3 +643,34 @@ class DailyScheduleCreate(BaseModel):
 class DailyScheduleUpdate(BaseModel):
     completed: Optional[int] = None
     completion_note: Optional[str] = None
+
+
+# --- Star Reward ---
+class StarRewardResponse(BaseModel):
+    id: int
+    child_id: Optional[int] = None
+    stars: int
+    reason: Optional[str] = None
+    related_schedule_id: Optional[int] = None
+    awarded_by: str
+    redeemed: int
+    redeemed_at: Optional[datetime] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class StarRewardCreate(BaseModel):
+    stars: int
+    awarded_by: str
+    reason: Optional[str] = None
+    related_schedule_id: Optional[int] = None
+
+
+class StarSummary(BaseModel):
+    total_stars: int
+    total_value: int  # total value in yuan (stars * 3)
+    unredeemed_stars: int
+    unredeemed_value: int  # unredeemed value in yuan
+    recent_stars: List[StarRewardResponse] = []
