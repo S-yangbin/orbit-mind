@@ -89,6 +89,105 @@ async def broadcast_to_dashboards(msg: dict):
                 _dashboard_connections.discard(ws)
 
 
+async def broadcast_tts(text: str, page: int | None = None):
+    """广播 TTS 播报指令到所有 Dashboard"""
+    msg: dict = {"type": "tts_speak", "text": text}
+    if page is not None:
+        msg["page"] = page
+    await broadcast_to_dashboards(msg)
+    logger.info("TTS 播报已广播给 %d 个连接: %s...", len(_dashboard_connections), text[:60])
+
+
+async def broadcast_switch_page(page: int, auto_rotate: bool = False, interval: int = 30):
+    """广播切换页面指令到所有 Dashboard"""
+    await broadcast_to_dashboards({
+        "type": "switch_page",
+        "page": page,
+        "auto_rotate": auto_rotate,
+        "interval": interval,
+    })
+    logger.info("切换页面指令已广播: page=%d, auto_rotate=%s, interval=%d", page, auto_rotate, interval)
+
+
+def format_board_messages(db) -> str:
+    """查询留言板数据，格式化为自然语言播报文本"""
+    messages = _get_board_messages(db)
+    if not messages:
+        return "留言板暂时没有留言。"
+    parts = []
+    for m in messages[:10]:  # 最多播报 10 条
+        author = m.get("author") or "匿名"
+        content = m.get("content", "")
+        parts.append(f"{author}留言说：{content}")
+    return "。".join(parts) + "。"
+
+
+def format_today_schedule(db) -> str:
+    """查询今日学习计划，格式化为自然语言播报文本"""
+    items = _get_today_schedule(db)
+    if not items:
+        return "今天暂无学习计划。"
+    activity_names = []
+    completed = 0
+    for item in items:
+        at = item.get("activity_type")
+        if at:
+            name = at.get("name", "")
+            icon = at.get("icon", "")
+            activity_names.append(f"{icon}{name}" if icon else name)
+        if item.get("completed") == 1:
+            completed += 1
+    total = len(activity_names)
+    remaining = total - completed
+    names_text = "、".join(activity_names)
+    text = f"今天的学习计划有：{names_text}。"
+    if completed > 0:
+        text += f"已完成 {completed} 项，"
+    if remaining > 0:
+        text += f"还有 {remaining} 项未完成。"
+    elif completed > 0:
+        text += "全部完成啦！"
+    return text
+
+
+def format_today_meals(db) -> str:
+    """查询今日菜谱（MealPlan + MealLog），格式化为自然语言播报文本"""
+    today = date.today()
+    parts = []
+
+    # 优先查用餐记录（实际吃的）
+    logs = db.query(MealLog).filter(MealLog.date == today).all()
+    if logs:
+        for log in logs:
+            dishes = _parse_json_field(log.dishes_json) or []
+            dish_names = [d.get("name", "") for d in dishes if isinstance(d, dict) and d.get("name")]
+            if dish_names:
+                meal_label = {"breakfast": "早餐", "lunch": "午餐", "dinner": "晚餐"}.get(log.meal_type, log.meal_type)
+                parts.append(f"今天的{meal_label}有{'、'.join(dish_names)}")
+    else:
+        # 查今日计划菜品
+        plans = (
+            db.query(MealPlan)
+            .options(joinedload(MealPlan.items).joinedload(MealPlanItem.dish))
+            .filter(MealPlan.week_start_date <= today)
+            .order_by(MealPlan.week_start_date.desc())
+            .first()
+        )
+        if plans:
+            today_items = [i for i in plans.items if i.date == today]
+            by_meal: dict[str, list] = {}
+            for item in today_items:
+                if item.dish:
+                    by_meal.setdefault(item.meal_type, []).append(item.dish.name)
+            for meal_type, names in by_meal.items():
+                meal_label = {"breakfast": "早餐", "lunch": "午餐", "dinner": "晚餐"}.get(meal_type, meal_type)
+                parts.append(f"今天的{meal_label}计划有{'、'.join(names)}")
+
+    if not parts:
+        return "今天还没有菜谱安排。"
+    return "，".join(parts) + "。"
+
+
 def _get_board_messages(db) -> list[dict]:
     """获取所有未过期的留言"""
     today = date.today()

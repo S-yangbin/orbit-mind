@@ -9,6 +9,20 @@ interface UseDashboardWsReturn {
   acknowledgeMessage: (messageId: number, memberId: number) => void;
   /** 非壁纸内容更新版本，每次变化可用于唤醒屏保 */
   contentVersion: number;
+  /** TTS 播报信号：每次播报递增，配合 ttsText/ttsPage 使用 */
+  ttsVersion: number;
+  /** TTS 播报文本 */
+  ttsText: string;
+  /** TTS 播报时自动切换到的页面 (null=不切换) */
+  ttsPage: number | null;
+  /** 切换页面信号：每次切换递增 */
+  switchPageVersion: number;
+  /** 目标页面 */
+  switchPageTarget: number;
+  /** 是否自动轮播 */
+  autoRotate: boolean;
+  /** 轮播间隔秒数 */
+  autoRotateInterval: number;
 }
 
 /**
@@ -22,6 +36,13 @@ export function useDashboardWs(): UseDashboardWsReturn {
   const [isConnected, setIsConnected] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<string | null>(null);
   const [contentVersion, setContentVersion] = useState(0);
+  const [ttsVersion, setTtsVersion] = useState(0);
+  const [ttsText, setTtsText] = useState("");
+  const [ttsPage, setTtsPage] = useState<number | null>(null);
+  const [switchPageVersion, setSwitchPageVersion] = useState(0);
+  const [switchPageTarget, setSwitchPageTarget] = useState(0);
+  const [autoRotate, setAutoRotate] = useState(false);
+  const [autoRotateInterval, setAutoRotateInterval] = useState(30);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
   const reconnectDelayRef = useRef(1000); // 初始重连延迟 1s
@@ -165,6 +186,26 @@ export function useDashboardWs(): UseDashboardWsReturn {
             }
             break;
 
+          case "tts_speak":
+            // TTS 语音播报指令
+            if ((msg as any).text) {
+              setTtsText((msg as any).text);
+              setTtsPage((msg as any).page ?? null);
+              setTtsVersion((v) => v + 1);
+              setContentVersion((v) => v + 1);
+            }
+            break;
+
+          case "switch_page":
+            // 切换页面指令
+            if ((msg as any).page !== undefined) {
+              setSwitchPageTarget((msg as any).page);
+              setAutoRotate(!!(msg as any).auto_rotate);
+              setAutoRotateInterval((msg as any).interval ?? 30);
+              setSwitchPageVersion((v) => v + 1);
+            }
+            break;
+
           case "pong":
             // 心跳响应，无需处理
             break;
@@ -227,5 +268,9 @@ export function useDashboardWs(): UseDashboardWsReturn {
   // 家庭成员列表
   const familyMembers = data?.family_members ?? [];
 
-  return { data, isConnected, lastUpdate, familyMembers, acknowledgeMessage, contentVersion };
+  return {
+    data, isConnected, lastUpdate, familyMembers, acknowledgeMessage, contentVersion,
+    ttsVersion, ttsText, ttsPage,
+    switchPageVersion, switchPageTarget, autoRotate, autoRotateInterval,
+  };
 }

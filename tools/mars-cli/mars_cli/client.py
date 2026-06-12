@@ -686,6 +686,39 @@ class MarsClient:
         )
         return self._handle_response(resp)
 
+    def broadcast(self, source: str = "messages", text: Optional[str] = None, page: Optional[int] = None) -> Dict[str, Any]:
+        """POST /api/dashboard/broadcast — 语音播报指定数据源或自由文本。
+
+        Args:
+            source: 数据源 (messages/schedule/meals/text)
+            text: 自由文本 (仅 source=text 时)
+            page: 播报时自动切换到指定页面 (0=家庭看板, 1=学习计划)
+        """
+        self._ensure_auth()
+        body: Dict[str, Any] = {"source": source}
+        if text is not None:
+            body["text"] = text
+        if page is not None:
+            body["page"] = page
+        resp = self.session.post(self._url("/api/dashboard/broadcast"), json=body, timeout=15)
+        return self._handle_response(resp)
+
+    def switch_page(self, page: int, auto_rotate: bool = False, interval: int = 30) -> Dict[str, Any]:
+        """POST /api/dashboard/switch-page — 远程控制 Dashboard 切换页面。
+
+        Args:
+            page: 目标页面 (0=家庭看板, 1=学习计划)
+            auto_rotate: 是否启动自动轮播
+            interval: 轮播间隔秒数
+        """
+        self._ensure_auth()
+        resp = self.session.post(
+            self._url("/api/dashboard/switch-page"),
+            json={"page": page, "auto_rotate": auto_rotate, "interval": interval},
+            timeout=15,
+        )
+        return self._handle_response(resp)
+
     # ─── 学习计划 ────────────────────────────────────────────────────────────
 
     def schedule_list_types(self) -> Dict[str, Any]:

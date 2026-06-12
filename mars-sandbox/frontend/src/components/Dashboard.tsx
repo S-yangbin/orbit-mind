@@ -15,7 +15,7 @@ import {
 import { DashboardPets } from "./DashboardPets";
 import { DashboardButterflies } from "./DashboardButterflies";
 import { useDashboardWs } from "../hooks/useDashboardWs";
-import { updateDailyItem } from "../api/schedule";
+import { updateDailyItem, fetchDailySchedule } from "../api/schedule";
 import { resolveColor, tintBackground, formatBoardDateTime, mealPhotoToUrl } from "../utils";
 import type {
   DashboardMealPlanItem,
@@ -117,7 +117,11 @@ const TRAVEL_GRADIENTS = [
 
 
 export function Dashboard() {
-  const { data, isConnected, familyMembers, acknowledgeMessage, contentVersion } = useDashboardWs();
+  const {
+    data, isConnected, familyMembers, acknowledgeMessage, contentVersion,
+    ttsVersion, ttsText, ttsPage,
+    switchPageVersion, switchPageTarget, autoRotate, autoRotateInterval,
+  } = useDashboardWs();
   const [now, setNow] = useState(new Date());
   const [selectedTravelPage, setSelectedTravelPage] = useState<DashboardTravelPage | null>(null);
   // 菜单详情弹窗（适老化大字展示）
@@ -133,11 +137,109 @@ export function Dashboard() {
   const [dashboardPage, setDashboardPage] = useState(0);
   // 学习计划日期偏移（0=今天，-1=昨天，+1=明天）
   const [scheduleDayOffset, setScheduleDayOffset] = useState(0);
+  // 切换日期后独立获取的计划数据（null 表示使用 WS 推送的 today_schedule）
+  const [offsetSchedule, setOffsetSchedule] = useState<TodayScheduleItem[] | null>(null);
   // 完成备注弹窗
   const [completingScheduleItem, setCompletingScheduleItem] = useState<TodayScheduleItem | null>(null);
   const [scheduleNote, setScheduleNote] = useState("");
   // 学习计划放大弹窗
   const [scheduleFullscreen, setScheduleFullscreen] = useState(false);
+
+  // 日期偏移变化时，获取对应日期的学习计划
+  useEffect(() => {
+    if (scheduleDayOffset === 0) {
+      setOffsetSchedule(null);
+      return;
+    }
+    const d = new Date();
+    d.setDate(d.getDate() + scheduleDayOffset);
+    const dateStr = getLocalDateStr(d);
+    fetchDailySchedule(dateStr)
+      .then((items) => setOffsetSchedule(items as unknown as TodayScheduleItem[]))
+      .catch(() => setOffsetSchedule([]));
+  }, [scheduleDayOffset]);
+
+  // ── TTS 语音播报 ──
+  const autoRotateRef = useRef<ReturnType<typeof setInterval>>();
+
+  useEffect(() => {
+    if (ttsVersion === 0) return;
+    // 如果指定了目标页面，先切换页面
+    if (ttsPage !== null && ttsPage !== dashboardPage) {
+      setDashboardPage(ttsPage);
+    }
+    // 使用 Web Speech API 播报
+    if ("speechSynthesis" in window && ttsText) {
+      // 取消正在进行的播报
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(ttsText);
+      utterance.lang = "zh-CN";
+      utterance.rate = 0.9;
+      utterance.pitch = 1.0;
+      // 尝试选择中文语音
+      const voices = window.speechSynthesis.getVoices();
+      const zhVoice = voices.find((v) => v.lang.startsWith("zh"));
+      if (zhVoice) utterance.voice = zhVoice;
+      window.speechSynthesis.speak(utterance);
+    }
+  }, [ttsVersion]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── 远程切换页面 ──
+  useEffect(() => {
+    if (switchPageVersion === 0) return;
+    setDashboardPage(switchPageTarget);
+
+    // 清理之前的轮播定时器
+    if (autoRotateRef.current) {
+      clearInterval(autoRotateRef.current);
+      autoRotateRef.current = undefined;
+    }
+
+    // 启动自动轮播
+    if (autoRotate) {
+      let currentPage = switchPageTarget;
+      autoRotateRef.current = setInterval(() => {
+        currentPage = currentPage === 0 ? 1 : 0;
+        setDashboardPage(currentPage);
+      }, autoRotateInterval * 1000);
+    }
+
+    return () => {
+      if (autoRotateRef.current) {
+        clearInterval(autoRotateRef.current);
+        autoRotateRef.current = undefined;
+      }
+    };
+  }, [switchPageVersion]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 用户手动操作时停止自动轮播
+  useEffect(() => {
+    const stopAutoRotate = () => {
+      if (autoRotateRef.current) {
+        clearInterval(autoRotateRef.current);
+        autoRotateRef.current = undefined;
+      }
+    };
+    // 用户点击页面导航指示器时停止轮播
+    // 这里通过监听 dashboardPage 变化来判断是否用户手动切换
+    // （如果是自动轮播导致的切换不会触发 stopAutoRotate，因为轮播内部直接 setState）
+    return () => {
+      if (autoRotateRef.current) {
+        clearInterval(autoRotateRef.current);
+      }
+    };
+  }, []);
+
+  // 获取指定偏移日期的计划数据
+  const refreshOffsetSchedule = useCallback(() => {
+    if (scheduleDayOffset === 0) return;
+    const d = new Date();
+    d.setDate(d.getDate() + scheduleDayOffset);
+    const dateStr = getLocalDateStr(d);
+    fetchDailySchedule(dateStr)
+      .then((items) => setOffsetSchedule(items as unknown as TodayScheduleItem[]))
+      .catch(() => {});
+  }, [scheduleDayOffset]);
 
   // ── 屏保模式 ──
   const [screensaver, setScreensaver] = useState(false);
@@ -513,7 +615,10 @@ export function Dashboard() {
           marginBottom: 16,
         }}>
           <button
-            onClick={() => setDashboardPage(0)}
+            onClick={() => {
+              if (autoRotateRef.current) { clearInterval(autoRotateRef.current); autoRotateRef.current = undefined; }
+              setDashboardPage(0);
+            }}
             style={{
               width: dashboardPage === 0 ? 32 : 10,
               height: 10,
@@ -525,7 +630,10 @@ export function Dashboard() {
             }}
           />
           <button
-            onClick={() => setDashboardPage(1)}
+            onClick={() => {
+              if (autoRotateRef.current) { clearInterval(autoRotateRef.current); autoRotateRef.current = undefined; }
+              setDashboardPage(1);
+            }}
             style={{
               width: dashboardPage === 1 ? 32 : 10,
               height: 10,
@@ -811,12 +919,14 @@ export function Dashboard() {
         <>
         {/* 学习计划页面 */}
         <SchedulePage
-          todaySchedule={data.today_schedule || []}
+          todaySchedule={offsetSchedule !== null ? offsetSchedule : (data.today_schedule || [])}
           dayOffset={scheduleDayOffset}
           onDayOffsetChange={setScheduleDayOffset}
           onMarkComplete={(item: TodayScheduleItem) => {
             if (item.completed === 1) {
-              updateDailyItem(item.id, { completed: 0 }).catch(() => {});
+              updateDailyItem(item.id, { completed: 0 })
+                .then(() => refreshOffsetSchedule())
+                .catch(() => {});
             } else {
               setCompletingScheduleItem(item);
               setScheduleNote("");
@@ -1002,6 +1112,7 @@ export function Dashboard() {
                 completion_note: scheduleNote.trim() || undefined,
               });
               setCompletingScheduleItem(null);
+              refreshOffsetSchedule();
             } catch {}
           }}
           okText="确认完成"
@@ -1099,7 +1210,7 @@ const SchedulePage = memo(function SchedulePage({
       {/* 活动列表 */}
       {todaySchedule.length === 0 ? (
         <div style={{ textAlign: "center", color: "rgba(255,255,255,0.6)", padding: "60px 0", fontSize: 18 }}>
-          今天暂无学习计划 🎉
+          {isToday ? "今天暂无学习计划 🎉" : "当天暂无学习计划"}
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>

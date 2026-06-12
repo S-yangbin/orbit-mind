@@ -5,9 +5,10 @@ description: >-
   管理远程节点、留言板、餐饮计划、视频学习、云盘、页面、标签、看板壁纸、
   儿童学习计划等。
   看板壁纸支持从 Bing + Pexels 壁纸池（约23张）随机刷新。
+  支持语音播报留言板、学习计划、今日菜谱等内容到 Dashboard。
   当用户提到：家庭服务器、留言板、餐饮计划、菜单、视频学习、云盘文件、
   页面管理、节点管理、远程命令执行、刷新壁纸、换壁纸、看板、
-  学习计划、作业、课程安排、今日计划时触发。
+  学习计划、作业、课程安排、今日计划、播报、朗读、语音播放时触发。
   当用户说「让小皮帮我做xxx」或提到「小皮」相关请求时，也应触发本 Skill。
 compatibility: Requires mars-cli installed on the server, and mars-sandbox service running.
 metadata:
@@ -50,8 +51,9 @@ required_environment_variables:
 - 查看节点状态
 - 刷新看板壁纸
 - 管理儿童学习计划（活动类型、周模板、每日计划、完成情况）
+- 语音播报留言板、学习计划、今日菜谱等内容到 Dashboard
 
-触发关键词：家庭服务器、留言板、餐饮计划、菜单、吃什么、视频学习、云盘、页面管理、节点、远程命令、壁纸、看板、学习计划、作业、今日计划
+触发关键词：家庭服务器、留言板、餐饮计划、菜单、吃什么、视频学习、云盘、页面管理、节点、远程命令、壁纸、看板、学习计划、作业、今日计划、播报、朗读、语音播放、TTS
 
 ## 前提条件
 
@@ -250,6 +252,8 @@ mars-cli dashboard refresh-wallpaper
 mars-cli dashboard generate-wallpaper [--prompt '自定义描述']
 mars-cli dashboard list-wallpapers
 mars-cli dashboard set-wallpaper <filename>
+mars-cli dashboard broadcast [--source messages|schedule|meals|text] [--text '...'] [--page 0|1]
+mars-cli dashboard switch-page <0|1> [--auto-rotate] [--interval 30]
 ```
 
 | 命令 | 说明 |
@@ -258,6 +262,14 @@ mars-cli dashboard set-wallpaper <filename>
 | `dashboard generate-wallpaper` | AI 生成高清风景壁纸并推送到所有已连接的 Dashboard（耗时约 30-90 秒） |
 | `dashboard list-wallpapers` | 列出所有已生成的 AI 壁纸，显示文件名、URL、大小、创建时间 |
 | `dashboard set-wallpaper <filename>` | 设置指定壁纸并推送到所有已连接的 Dashboard |
+| `dashboard broadcast --source messages` | 语音播报留言板内容（默认，最多 10 条） |
+| `dashboard broadcast --source schedule` | 语音播报今日学习计划及完成情况 |
+| `dashboard broadcast --source meals` | 语音播报今日菜谱（午餐/晚餐） |
+| `dashboard broadcast --source text --text '...'` | 播报自定义文本 |
+| `dashboard broadcast --page 0` | 播报时自动切换到家庭看板页 |
+| `dashboard switch-page 0` | 远程切换到家庭看板页 |
+| `dashboard switch-page 1` | 远程切换到学习计划页 |
+| `dashboard switch-page 0 --auto-rotate --interval 60` | 启动自动轮播，每 60 秒切换一次 |
 
 ### 学习计划 (`schedule`)
 
@@ -374,6 +386,28 @@ mars-cli dashboard list-wallpapers
 
 # 设置指定壁纸为看板背景（文件名从 list-wallpapers 获取）
 mars-cli dashboard set-wallpaper ai-wallpaper_高清风景壁纸,星空下的雪山,宁静壮观,_1781234567890.png
+```
+
+### 看板播报与翻页
+
+```bash
+# 语音播报留言板内容（默认）
+mars-cli dashboard broadcast
+
+# 语音播报今日菜谱
+mars-cli dashboard broadcast --source meals
+
+# 语音播报学习计划并自动切换到学习计划页
+mars-cli dashboard broadcast --source schedule --page 1
+
+# 播报自定义文本
+mars-cli dashboard broadcast --source text --text '该收拾书包准备上学啦'
+
+# 远程切换到学习计划页
+mars-cli dashboard switch-page 1
+
+# 启动自动轮播，每 60 秒在家庭看板和学习计划间切换
+mars-cli dashboard switch-page 0 --auto-rotate --interval 60
 ```
 
 ### 管理儿童学习计划

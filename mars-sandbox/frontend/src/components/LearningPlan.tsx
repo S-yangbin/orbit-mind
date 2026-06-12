@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Card,
   Button,
@@ -11,10 +11,11 @@ import {
   message,
   Typography,
   Modal,
-  DatePicker,
   Tag,
   Divider,
   ColorPicker,
+  Badge,
+  Tooltip,
 } from "antd";
 import {
   PlusOutlined,
@@ -33,7 +34,7 @@ import {
   deleteActivityType,
   fetchActiveTemplate,
   createOrUpdateTemplate,
-  fetchDailySchedule,
+  fetchDailyRange,
   addDailyItem,
   updateDailyItem,
   deleteDailyItem,
@@ -48,7 +49,7 @@ import dayjs from "dayjs";
 
 const { Text, Title } = Typography;
 
-const WEEKDAY_LABELS = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
+const WEEKDAY_LABELS = ["一", "二", "三", "四", "五", "六", "日"];
 
 // 预设活动类型 emoji 选项
 const EMOJI_OPTIONS = ["📚", "📝", "🎨", "🏀", "♟️", "🎹", "🎮", "🧩", "✏️", "🏃", "⚽", "🎯", "🎭", "🧮", "📖", "🌟"];
@@ -60,19 +61,56 @@ function getLocalDateStr(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
-function getWeekdayName(dateStr: string): string {
-  const d = new Date(dateStr);
-  const dow = d.getDay(); // 0=Sun
-  return WEEKDAY_LABELS[dow === 0 ? 6 : dow - 1];
+/** 获取指定月份日历网格（包含前后补齐的其他月份日期） */
+function getMonthGrid(year: number, month: number): { dateStr: string; day: number; isCurrentMonth: boolean }[] {
+  const firstDay = new Date(year, month, 1);
+  const lastDay = new Date(year, month + 1, 0);
+  // 周一=0 ... 周日=6
+  const startDow = (firstDay.getDay() + 6) % 7;
+  const daysInMonth = lastDay.getDate();
+
+  const grid: { dateStr: string; day: number; isCurrentMonth: boolean }[] = [];
+
+  // 上月补齐
+  const prevMonthLastDay = new Date(year, month, 0).getDate();
+  for (let i = startDow - 1; i >= 0; i--) {
+    const d = prevMonthLastDay - i;
+    const dt = new Date(year, month - 1, d);
+    grid.push({ dateStr: getLocalDateStr(dt), day: d, isCurrentMonth: false });
+  }
+
+  // 本月
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dt = new Date(year, month, d);
+    grid.push({ dateStr: getLocalDateStr(dt), day: d, isCurrentMonth: true });
+  }
+
+  // 下月补齐（补到 6 行 = 42 格，或至少补完当前行）
+  const remaining = (7 - (grid.length % 7)) % 7;
+  for (let d = 1; d <= remaining; d++) {
+    const dt = new Date(year, month + 1, d);
+    grid.push({ dateStr: getLocalDateStr(dt), day: d, isCurrentMonth: false });
+  }
+
+  return grid;
 }
 
 export function LearningPlan() {
   // State
   const [activityTypes, setActivityTypes] = useState<ActivityType[]>([]);
   const [template, setTemplate] = useState<WeeklyTemplate | null>(null);
-  const [selectedDate, setSelectedDate] = useState<string>(getLocalDateStr(new Date()));
-  const [dailyItems, setDailyItems] = useState<DailyScheduleItem[]>([]);
   const [loading, setLoading] = useState(false);
+
+  // 当前查看月份
+  const today = new Date();
+  const [viewYear, setViewYear] = useState(today.getFullYear());
+  const [viewMonth, setViewMonth] = useState(today.getMonth()); // 0-11
+
+  // 选中的日期
+  const [selectedDate, setSelectedDate] = useState<string>(getLocalDateStr(today));
+
+  // 月度全部数据
+  const [monthItems, setMonthItems] = useState<DailyScheduleItem[]>([]);
 
   // Add activity modal
   const [showAddModal, setShowAddModal] = useState(false);
@@ -93,37 +131,69 @@ export function LearningPlan() {
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [templateEditDays, setTemplateEditDays] = useState<WeeklyTemplateDayItem[]>([]);
 
+  // 按月分组
+  const itemsByDate = useMemo(() => {
+    const map: Record<string, DailyScheduleItem[]> = {};
+    for (const item of monthItems) {
+      if (!map[item.date]) map[item.date] = [];
+      map[item.date].push(item);
+    }
+    return map;
+  }, [monthItems]);
+
+  // 日历网格
+  const monthGrid = useMemo(() => getMonthGrid(viewYear, viewMonth), [viewYear, viewMonth]);
+  const todayStr = getLocalDateStr(new Date());
+
   // Load data
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
+      const firstDay = new Date(viewYear, viewMonth, 1);
+      const lastDay = new Date(viewYear, viewMonth + 1, 0);
+      const startDow = (firstDay.getDay() + 6) % 7;
+      // 扩展范围包含上月补齐日期
+      const rangeStart = new Date(firstDay);
+      rangeStart.setDate(rangeStart.getDate() - startDow);
+      // 扩展到周六结尾
+      const endDow = (lastDay.getDay() + 6) % 7;
+      const rangeEnd = new Date(lastDay);
+      rangeEnd.setDate(rangeEnd.getDate() + (6 - endDow));
+
       const [types, tpl, items] = await Promise.all([
         fetchActivityTypes(),
         fetchActiveTemplate(),
-        fetchDailySchedule(selectedDate),
+        fetchDailyRange(getLocalDateStr(rangeStart), getLocalDateStr(rangeEnd)),
       ]);
       setActivityTypes(types);
       setTemplate(tpl);
-      setDailyItems(items);
+      setMonthItems(items);
     } catch (e) {
       console.error("Failed to load schedule data:", e);
       message.error("加载数据失败");
     }
     setLoading(false);
-  }, [selectedDate]);
+  }, [viewYear, viewMonth]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
   // Navigation
-  const navigateDate = (delta: number) => {
-    const d = new Date(selectedDate);
-    d.setDate(d.getDate() + delta);
-    setSelectedDate(getLocalDateStr(d));
+  const navigateMonth = (delta: number) => {
+    let m = viewMonth + delta;
+    let y = viewYear;
+    if (m < 0) { m = 11; y--; }
+    if (m > 11) { m = 0; y++; }
+    setViewYear(y);
+    setViewMonth(m);
   };
 
-  const goToday = () => setSelectedDate(getLocalDateStr(new Date()));
+  const goThisMonth = () => {
+    const t = new Date();
+    setViewYear(t.getFullYear());
+    setViewMonth(t.getMonth());
+  };
 
   // Add activity
   const handleAddItem = async () => {
@@ -148,7 +218,6 @@ export function LearningPlan() {
   // Mark complete
   const handleMarkComplete = (item: DailyScheduleItem) => {
     if (item.completed === 1) {
-      // Uncomplete directly
       updateDailyItem(item.id, { completed: 0, completion_note: "" })
         .then(() => {
           message.success("已取消完成");
@@ -156,7 +225,6 @@ export function LearningPlan() {
         })
         .catch(() => message.error("操作失败"));
     } else {
-      // Open note modal
       setCompletingItem(item);
       setCompletionNote("");
     }
@@ -253,11 +321,14 @@ export function LearningPlan() {
   };
 
   const selectedDateObj = new Date(selectedDate);
-  const dateDisplay = `${selectedDateObj.getMonth() + 1}月${selectedDateObj.getDate()}日 ${getWeekdayName(selectedDate)}`;
-  const isToday = selectedDate === getLocalDateStr(new Date());
+  const isCurrentMonth = viewYear === today.getFullYear() && viewMonth === today.getMonth();
+  const monthLabel = `${viewYear}年${viewMonth + 1}月`;
+
+  // 选中日期的数据
+  const selectedDayItems = itemsByDate[selectedDate] || [];
 
   return (
-    <div style={{ maxWidth: 900, margin: "0 auto", padding: "24px 16px" }}>
+    <div style={{ maxWidth: 960, margin: "0 auto", padding: "24px 16px" }}>
       {/* Header */}
       <div style={{
         display: "flex",
@@ -291,7 +362,7 @@ export function LearningPlan() {
         </Space>
       </div>
 
-      {/* Date navigation */}
+      {/* Month navigation */}
       <Card style={{
         marginBottom: 20,
         borderRadius: 14,
@@ -301,40 +372,169 @@ export function LearningPlan() {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <Button
             icon={<LeftOutlined />}
-            onClick={() => navigateDate(-1)}
+            onClick={() => navigateMonth(-1)}
             shape="circle"
             style={{ boxShadow: "0 2px 6px rgba(0,0,0,0.08)" }}
           />
           <div style={{ textAlign: "center", display: "flex", alignItems: "center", gap: 12 }}>
-            <DatePicker
-              value={dayjs(selectedDate)}
-              onChange={(d) => d && setSelectedDate(d.format("YYYY-MM-DD"))}
-              style={{ width: 140, borderRadius: 8 }}
-              allowClear={false}
-              size="small"
-            />
-            <div style={{ fontSize: 22, fontWeight: 700, color: "#1e293b", letterSpacing: 0.5 }}>{dateDisplay}</div>
-            {isToday && (
-              <Tag color="blue" style={{ borderRadius: 10, padding: "2px 10px", fontWeight: 600, fontSize: 13 }}>今天</Tag>
+            <CalendarOutlined style={{ fontSize: 20, color: "#667eea" }} />
+            <div style={{ fontSize: 22, fontWeight: 700, color: "#1e293b", letterSpacing: 0.5 }}>{monthLabel}</div>
+            {isCurrentMonth && (
+              <Tag color="blue" style={{ borderRadius: 10, padding: "2px 10px", fontWeight: 600, fontSize: 13 }}>本月</Tag>
             )}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <Button
               icon={<RightOutlined />}
-              onClick={() => navigateDate(1)}
+              onClick={() => navigateMonth(1)}
               shape="circle"
               style={{ boxShadow: "0 2px 6px rgba(0,0,0,0.08)" }}
             />
-            {!isToday && (
-              <Button type="link" onClick={goToday} style={{ borderRadius: 8 }}>回到今天</Button>
+            {!isCurrentMonth && (
+              <Button type="link" onClick={goThisMonth} style={{ borderRadius: 8 }}>回到本月</Button>
             )}
           </div>
         </div>
       </Card>
 
-      {/* Daily schedule items */}
+      {/* Calendar Grid */}
+      <Spin spinning={loading}>
+        <Card
+          style={{
+            marginBottom: 20,
+            borderRadius: 14,
+            border: "none",
+            boxShadow: "0 2px 12px rgba(0,0,0,0.06)",
+            overflow: "hidden",
+          }}
+          styles={{ body: { padding: 0 } }}
+        >
+          {/* Weekday header */}
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(7, 1fr)",
+            background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+            padding: "10px 0",
+          }}>
+            {WEEKDAY_LABELS.map((label) => (
+              <div key={label} style={{
+                textAlign: "center",
+                fontSize: 14,
+                fontWeight: 700,
+                color: "rgba(255,255,255,0.9)",
+                letterSpacing: 1,
+              }}>
+                {label}
+              </div>
+            ))}
+          </div>
+
+          {/* Day cells */}
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(7, 1fr)",
+          }}>
+            {monthGrid.map((cell) => {
+              const dayItems = itemsByDate[cell.dateStr] || [];
+              const isToday = cell.dateStr === todayStr;
+              const isSelected = cell.dateStr === selectedDate;
+              const completedCount = dayItems.filter(i => i.completed === 1).length;
+              const totalCount = dayItems.length;
+              const allDone = totalCount > 0 && completedCount === totalCount;
+
+              return (
+                <div
+                  key={cell.dateStr}
+                  onClick={() => setSelectedDate(cell.dateStr)}
+                  style={{
+                    minHeight: 90,
+                    padding: "6px 8px",
+                    borderRight: "1px solid #f0f0f0",
+                    borderBottom: "1px solid #f0f0f0",
+                    cursor: "pointer",
+                    background: isSelected
+                      ? "#f0f5ff"
+                      : isToday
+                        ? "#fafafa"
+                        : cell.isCurrentMonth
+                          ? "#fff"
+                          : "#f9f9f9",
+                    transition: "background 0.2s",
+                    position: "relative",
+                  }}
+                >
+                  {/* Day number */}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                    <span style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      width: 26,
+                      height: 26,
+                      borderRadius: "50%",
+                      fontSize: 13,
+                      fontWeight: isToday ? 700 : 500,
+                      color: isToday ? "#fff" : cell.isCurrentMonth ? "#1e293b" : "#c0c0c0",
+                      background: isToday
+                        ? "linear-gradient(135deg, #667eea, #764ba2)"
+                        : "transparent",
+                    }}>
+                      {cell.day}
+                    </span>
+                    {totalCount > 0 && (
+                      <span style={{
+                        fontSize: 11,
+                        color: allDone ? "#22c55e" : "#94a3b8",
+                        fontWeight: 500,
+                      }}>
+                        {completedCount}/{totalCount}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Activity icons */}
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
+                    {dayItems.slice(0, 4).map((item) => {
+                      const at = item.activity_type;
+                      const done = item.completed === 1;
+                      return (
+                        <Tooltip key={item.id} title={`${at?.name || "未知"}${done ? " ✓" : ""}`}>
+                          <span style={{
+                            fontSize: 16,
+                            opacity: done ? 0.45 : 1,
+                            filter: done ? "grayscale(0.6)" : "none",
+                            lineHeight: 1,
+                          }}>
+                            {at?.icon || "📋"}
+                          </span>
+                        </Tooltip>
+                      );
+                    })}
+                    {dayItems.length > 4 && (
+                      <span style={{ fontSize: 11, color: "#94a3b8", lineHeight: "16px" }}>
+                        +{dayItems.length - 4}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      </Spin>
+
+      {/* Selected day detail */}
       <Card
-        title={<span style={{ fontSize: 17, fontWeight: 700 }}>今日计划</span>}
+        title={
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 17, fontWeight: 700 }}>
+              {selectedDateObj.getMonth() + 1}月{selectedDateObj.getDate()}日 计划详情
+            </span>
+            {selectedDate === todayStr && (
+              <Tag color="blue" style={{ borderRadius: 8, fontSize: 12 }}>今天</Tag>
+            )}
+          </div>
+        }
         extra={
           <Button
             type="primary"
@@ -352,104 +552,102 @@ export function LearningPlan() {
           boxShadow: "0 2px 12px rgba(0,0,0,0.06)",
         }}
       >
-        <Spin spinning={loading}>
-          {dailyItems.length === 0 ? (
-            <Empty description="今天暂无安排，点击「添加活动」开始规划" />
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {dailyItems.map((item) => {
-                const at = item.activity_type;
-                const isCompleted = item.completed === 1;
-                return (
+        {selectedDayItems.length === 0 ? (
+          <Empty description="当天暂无安排，点击「添加活动」开始规划" />
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {selectedDayItems.map((item) => {
+              const at = item.activity_type;
+              const isCompleted = item.completed === 1;
+              return (
+                <div
+                  key={item.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 14,
+                    padding: "14px 18px",
+                    background: isCompleted
+                      ? "linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%)"
+                      : "linear-gradient(135deg, #fafbfc 0%, #f8f9fb 100%)",
+                    borderRadius: 14,
+                    border: `1.5px solid ${isCompleted ? "#86efac" : "#e8ecf1"}`,
+                    transition: "all 0.25s ease",
+                    boxShadow: isCompleted
+                      ? "0 2px 8px rgba(34, 197, 94, 0.08)"
+                      : "0 1px 4px rgba(0,0,0,0.04)",
+                  }}
+                >
+                  {/* Icon */}
                   <div
-                    key={item.id}
                     style={{
+                      fontSize: 30,
+                      width: 52,
+                      height: 52,
                       display: "flex",
                       alignItems: "center",
-                      gap: 14,
-                      padding: "14px 18px",
-                      background: isCompleted
-                        ? "linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%)"
-                        : "linear-gradient(135deg, #fafbfc 0%, #f8f9fb 100%)",
+                      justifyContent: "center",
                       borderRadius: 14,
-                      border: `1.5px solid ${isCompleted ? "#86efac" : "#e8ecf1"}`,
-                      transition: "all 0.25s ease",
-                      boxShadow: isCompleted
-                        ? "0 2px 8px rgba(34, 197, 94, 0.08)"
-                        : "0 1px 4px rgba(0,0,0,0.04)",
+                      background: at?.color ? `${at.color}18` : "#f1f5f9",
+                      border: at?.color ? `1.5px solid ${at.color}25` : "1.5px solid #e8ecf1",
+                      flexShrink: 0,
+                      boxShadow: "0 2px 6px rgba(0,0,0,0.04)",
                     }}
                   >
-                    {/* Icon */}
-                    <div
-                      style={{
-                        fontSize: 30,
-                        width: 52,
-                        height: 52,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        borderRadius: 14,
-                        background: at?.color ? `${at.color}18` : "#f1f5f9",
-                        border: at?.color ? `1.5px solid ${at.color}25` : "1.5px solid #e8ecf1",
-                        flexShrink: 0,
-                        boxShadow: "0 2px 6px rgba(0,0,0,0.04)",
-                      }}
-                    >
-                      {at?.icon || "📋"}
-                    </div>
-
-                    {/* Name + note */}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{
-                        fontSize: 16,
-                        fontWeight: 600,
-                        color: isCompleted ? "#86efac" : "#1e293b",
-                        textDecoration: isCompleted ? "line-through" : "none",
-                      }}>
-                        {at?.name || "未知活动"}
-                      </div>
-                      {isCompleted && item.completion_note && (
-                        <div style={{ fontSize: 13, color: "#64748b", marginTop: 2 }}>
-                          备注: {item.completion_note}
-                        </div>
-                      )}
-                      {isCompleted && item.completed_at && (
-                        <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>
-                          {new Date(item.completed_at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })} 完成
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Actions */}
-                    <Space>
-                      <Button
-                        type={isCompleted ? "default" : "primary"}
-                        shape="circle"
-                        icon={isCompleted ? <CheckCircleFilled style={{ color: "#22c55e" }} /> : <CheckCircleOutlined />}
-                        onClick={() => handleMarkComplete(item)}
-                        title={isCompleted ? "取消完成" : "标记完成"}
-                        style={isCompleted ? { border: "none", background: "transparent" } : {}}
-                      />
-                      <Popconfirm
-                        title="确定删除这个活动？"
-                        onConfirm={() => handleDeleteItem(item.id)}
-                        okText="删除"
-                        cancelText="取消"
-                      >
-                        <Button type="text" danger icon={<DeleteOutlined />} size="small" />
-                      </Popconfirm>
-                    </Space>
+                    {at?.icon || "📋"}
                   </div>
-                );
-              })}
-            </div>
-          )}
-        </Spin>
+
+                  {/* Name + note */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{
+                      fontSize: 16,
+                      fontWeight: 600,
+                      color: isCompleted ? "#86efac" : "#1e293b",
+                      textDecoration: isCompleted ? "line-through" : "none",
+                    }}>
+                      {at?.name || "未知活动"}
+                    </div>
+                    {isCompleted && item.completion_note && (
+                      <div style={{ fontSize: 13, color: "#64748b", marginTop: 2 }}>
+                        备注: {item.completion_note}
+                      </div>
+                    )}
+                    {isCompleted && item.completed_at && (
+                      <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>
+                        {new Date(item.completed_at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })} 完成
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Actions */}
+                  <Space>
+                    <Button
+                      type={isCompleted ? "default" : "primary"}
+                      shape="circle"
+                      icon={isCompleted ? <CheckCircleFilled style={{ color: "#22c55e" }} /> : <CheckCircleOutlined />}
+                      onClick={() => handleMarkComplete(item)}
+                      title={isCompleted ? "取消完成" : "标记完成"}
+                      style={isCompleted ? { border: "none", background: "transparent" } : {}}
+                    />
+                    <Popconfirm
+                      title="确定删除这个活动？"
+                      onConfirm={() => handleDeleteItem(item.id)}
+                      okText="删除"
+                      cancelText="取消"
+                    >
+                      <Button type="text" danger icon={<DeleteOutlined />} size="small" />
+                    </Popconfirm>
+                  </Space>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </Card>
 
       {/* Add activity modal */}
       <Modal
-        title="添加活动"
+        title={`添加活动 - ${selectedDateObj.getMonth() + 1}月${selectedDateObj.getDate()}日`}
         open={showAddModal}
         onOk={handleAddItem}
         onCancel={() => setShowAddModal(false)}
@@ -579,7 +777,7 @@ export function LearningPlan() {
           return (
             <div key={dow} style={{ marginBottom: 12, padding: "8px 12px", background: "#fafafa", borderRadius: 8 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-                <Text strong>{label}</Text>
+                <Text strong>周{label}</Text>
                 <Select
                   placeholder="+ 添加"
                   style={{ width: 120 }}
