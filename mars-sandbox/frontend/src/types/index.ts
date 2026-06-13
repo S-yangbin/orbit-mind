@@ -213,6 +213,13 @@ export interface DishCreateData {
   tags?: string[];
 }
 
+export interface DishUpdateData {
+  name?: string;
+  category?: string;
+  recipe?: string;
+  tags?: string[];
+}
+
 export interface MealPlanItemDish {
   id: number;
   name: string;

@@ -7,6 +7,7 @@ import {
   Popover,
   Select,
   Input,
+  Modal,
   message,
   Spin,
   Typography,
@@ -22,8 +23,9 @@ import {
   HistoryOutlined,
   PlusOutlined,
   ReloadOutlined,
+  EditOutlined,
 } from "@ant-design/icons";
-import type { MealPlan, MealPlanItem, Dish } from "../types";
+import type { MealPlan, MealPlanItem, Dish, DishCreateData, DishUpdateData } from "../types";
 import {
   fetchCurrentPlans,
   generatePlan,
@@ -33,6 +35,8 @@ import {
   addPlanItem,
   fetchDishes,
   createDish,
+  updateDish,
+  deleteDish,
 } from "../api/meals";
 import { useIsMobile } from "../hooks/useIsMobile";
 import { mealPhotoToUrl } from "../utils";
@@ -103,9 +107,15 @@ export function MealPlanner() {
   const [dishes, setDishes] = useState<Dish[]>([]);
   const [replaceItem, setReplaceItem] = useState<MealPlanItem | null>(null);
   const [addTarget, setAddTarget] = useState<{ date: string; meal_type: string } | null>(null);
-  const [newDishName, setNewDishName] = useState("");
   const [newDishCategory, setNewDishCategory] = useState("荤菜");
   const [creatingDish, setCreatingDish] = useState(false);
+  const [addSearchText, setAddSearchText] = useState("");
+  const [replaceSearchText, setReplaceSearchText] = useState("");
+  // 编辑菜品状态
+  const [editDish, setEditDish] = useState<Dish | null>(null);
+  const [editDishName, setEditDishName] = useState("");
+  const [editDishCategory, setEditDishCategory] = useState("");
+  const [savingDish, setSavingDish] = useState(false);
   const [datePhotos, setDatePhotos] = useState<Record<string, string>>({});
   const [refreshing, setRefreshing] = useState(false);
   const isMobile = useIsMobile();
@@ -246,6 +256,7 @@ export function MealPlanner() {
       await replacePlanItem(replaceItem.id, dishId);
       await loadData();
       setReplaceItem(null);
+      setReplaceSearchText("");
       message.success("已替换");
     } catch {
       message.error("替换失败");
@@ -258,25 +269,79 @@ export function MealPlanner() {
       await addPlanItem(addTarget.date, addTarget.meal_type, dishId);
       await loadData();
       setAddTarget(null);
+      setAddSearchText("");
       message.success("已添加");
     } catch {
       message.error("添加失败");
     }
   };
 
-  const handleCreateAndAdd = async () => {
-    if (!addTarget || !newDishName.trim()) return;
+  const openEditDish = (dishId: number, name: string, category: string) => {
+    setEditDish({ id: dishId, name, category } as Dish);
+    setEditDishName(name);
+    setEditDishCategory(category);
+  };
+
+  const handleSaveDish = async () => {
+    if (!editDish || !editDishName.trim()) return;
+    setSavingDish(true);
+    try {
+      const payload: DishUpdateData = {};
+      if (editDishName.trim() !== editDish.name) payload.name = editDishName.trim();
+      if (editDishCategory !== editDish.category) payload.category = editDishCategory;
+      if (Object.keys(payload).length === 0) {
+        setEditDish(null);
+        return;
+      }
+      await updateDish(editDish.id, payload);
+      await loadData();
+      setEditDish(null);
+      message.success("菜品已更新");
+    } catch (e: unknown) {
+      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      if (detail?.includes("already exists")) {
+        message.warning("该菜品名称已存在");
+      } else {
+        message.error("更新失败");
+      }
+    } finally {
+      setSavingDish(false);
+    }
+  };
+
+  const handleDeleteDish = async (dishId: number, name: string) => {
+    Modal.confirm({
+      title: `删除「${name}」？`,
+      content: "删除后无法恢复",
+      okText: "删除",
+      okButtonProps: { danger: true },
+      cancelText: "取消",
+      onOk: async () => {
+        try {
+          await deleteDish(dishId);
+          await loadData();
+          message.success("已删除");
+        } catch (e: unknown) {
+          const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+          message.error(detail || "删除失败");
+        }
+      },
+    });
+  };
+
+  const handleCreateDish = async (
+    name: string,
+    onSuccess: (dishId: number) => Promise<void>,
+    successMsg: string,
+  ) => {
     setCreatingDish(true);
     try {
-      const dish = await createDish({
-        name: newDishName.trim(),
-        category: newDishCategory,
-      });
-      await addPlanItem(addTarget.date, addTarget.meal_type, dish.id);
+      const dish = await createDish({ name: name.trim(), category: newDishCategory } as DishCreateData);
+      await onSuccess(dish.id);
       await loadData();
-      setAddTarget(null);
-      setNewDishName("");
-      message.success(`已创建并添加「${dish.name}」`);
+      setAddSearchText("");
+      setReplaceSearchText("");
+      message.success(successMsg);
     } catch (e: unknown) {
       const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       if (detail?.includes("already exists")) {
@@ -289,21 +354,56 @@ export function MealPlanner() {
     }
   };
 
-  if (loading) return <Spin size="large" style={{ display: "block", margin: "80px auto" }} />;
+  const dishSearchSelect = (
+    onSelect: (id: number) => void,
+    searchText: string,
+    setSearchText: (v: string) => void,
+    mode: "add" | "replace",
+  ) => {
+    const trimmed = searchText.trim();
+    const matched = trimmed
+      ? dishes.filter((d) => d.name.includes(trimmed))
+      : dishes.slice(0, 20); // 空搜索时显示前 20 个
+    const hasExactMatch = dishes.some((d) => d.name === trimmed);
+    const showCreate = trimmed.length > 0 && !hasExactMatch;
 
-  const dishSelector = (onSelect: (id: number) => void) => (
-    <Select
-      showSearch
-      placeholder="搜索菜品..."
-      style={{ width: 200 }}
-      optionFilterProp="label"
-      onChange={onSelect}
-      options={dishes.map((d) => ({
+    const options = [
+      ...matched.map((d) => ({
         value: d.id,
         label: `${d.name} (${d.category})`,
-      }))}
-    />
-  );
+      })),
+      ...(showCreate
+        ? [{ value: -1, label: `➕ 新建菜品「${trimmed}」` }]
+        : []),
+    ];
+
+    return (
+      <Select
+        showSearch
+        placeholder="搜索或输入新菜品名称..."
+        style={{ width: "100%" }}
+        filterOption={false}
+        searchValue={searchText}
+        onSearch={setSearchText}
+        loading={creatingDish}
+        onDropdownVisibleChange={(open) => { if (!open) setSearchText(""); }}
+        onChange={(value: number) => {
+          if (value === -1) {
+            handleCreateDish(
+              trimmed,
+              async (dishId) => onSelect(dishId),
+              mode === "add" ? `已创建并添加「${trimmed}」` : `已创建并替换为「${trimmed}」`,
+            );
+          } else {
+            onSelect(value);
+          }
+        }}
+        options={options}
+      />
+    );
+  };
+
+  if (loading) return <Spin size="large" style={{ display: "block", margin: "80px auto" }} />;
 
   const dishPopover = (item: MealPlanItem, isPast: boolean) => {
     return (
@@ -320,8 +420,31 @@ export function MealPlanner() {
             {item.dish.recipe}
           </div>
         )}
+
+        {/* 菜品级操作 */}
+        <div style={{ marginTop: 10, display: "flex", gap: 4 }}>
+          <Button
+            size="small"
+            icon={<EditOutlined />}
+            onClick={() => openEditDish(item.dish.id, item.dish.name, item.dish.category)}
+            style={{ borderRadius: 6 }}
+          >
+            编辑
+          </Button>
+          <Button
+            size="small"
+            danger
+            icon={<DeleteOutlined />}
+            onClick={() => handleDeleteDish(item.dish.id, item.dish.name)}
+            style={{ borderRadius: 6 }}
+          >
+            删除
+          </Button>
+        </div>
+
+        {/* 菜单项级操作 */}
         {!isPast && item.id > 0 && (
-          <div style={{ marginTop: 8, display: "flex", gap: 4 }}>
+          <div style={{ marginTop: 6, display: "flex", gap: 4 }}>
             <Button
               size="small"
               icon={<SwapOutlined />}
@@ -658,17 +781,26 @@ export function MealPlanner() {
             zIndex: 1000,
             padding: 16,
           }}
-          onClick={() => setReplaceItem(null)}
+          onClick={() => { setReplaceItem(null); setReplaceSearchText(""); }}
         >
           <Card
             title={`替换: ${replaceItem.dish.name}`}
-            style={{ width: "100%", maxWidth: 320, borderRadius: 12 }}
+            style={{ width: "100%", maxWidth: 360, borderRadius: 12 }}
             onClick={(e) => e.stopPropagation()}
           >
-            <Text style={{ display: "block", marginBottom: 8, color: "#64748b" }}>
-              选择新菜品:
-            </Text>
-            {dishSelector(handleReplace)}
+            {dishSearchSelect(handleReplace, replaceSearchText, setReplaceSearchText, "replace")}
+            {replaceSearchText.trim() && !dishes.some((d) => d.name === replaceSearchText.trim()) && (
+              <Space style={{ marginTop: 8 }}>
+                <Select
+                  size="small"
+                  value={newDishCategory}
+                  onChange={setNewDishCategory}
+                  style={{ width: 100 }}
+                  options={Object.keys(CATEGORY_COLORS).map((c) => ({ value: c, label: c }))}
+                />
+                <Text style={{ fontSize: 12, color: "#9ca3af" }}>← 新建菜品分类</Text>
+              </Space>
+            )}
           </Card>
         </div>
       )}
@@ -687,49 +819,81 @@ export function MealPlanner() {
             zIndex: 1000,
             padding: 16,
           }}
-          onClick={() => { setAddTarget(null); setNewDishName(""); }}
+          onClick={() => { setAddTarget(null); setAddSearchText(""); }}
         >
           <Card
             title={`添加菜品 - ${MEAL_LABELS[addTarget.meal_type]}`}
             style={{ width: "100%", maxWidth: 360, borderRadius: 12 }}
             onClick={(e) => e.stopPropagation()}
           >
-            <Text style={{ display: "block", marginBottom: 8, color: "#64748b" }}>
-              从已有菜品选择:
-            </Text>
-            {dishSelector(handleAdd)}
-
-            <Divider style={{ margin: "16px 0" }} />
-
-            <Text style={{ display: "block", marginBottom: 8, color: "#64748b" }}>
-              或新建菜品:
-            </Text>
-            <Space direction="vertical" style={{ width: "100%" }} size={8}>
-              <Input
-                placeholder="输入菜品名称..."
-                value={newDishName}
-                onChange={(e) => setNewDishName(e.target.value)}
-                onPressEnter={handleCreateAndAdd}
-                maxLength={30}
-              />
-              <Space style={{ width: "100%", justifyContent: "space-between" }}>
+            {dishSearchSelect(handleAdd, addSearchText, setAddSearchText, "add")}
+            {addSearchText.trim() && !dishes.some((d) => d.name === addSearchText.trim()) && (
+              <Space style={{ marginTop: 8 }}>
                 <Select
+                  size="small"
                   value={newDishCategory}
                   onChange={setNewDishCategory}
-                  style={{ width: 120 }}
+                  style={{ width: 100 }}
                   options={Object.keys(CATEGORY_COLORS).map((c) => ({ value: c, label: c }))}
                 />
+                <Text style={{ fontSize: 12, color: "#9ca3af" }}>← 新建菜品分类</Text>
+              </Space>
+            )}
+          </Card>
+        </div>
+      )}
+
+      {/* Edit Dish Modal */}
+      {editDish && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.3)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1001,
+            padding: 16,
+          }}
+          onClick={() => setEditDish(null)}
+        >
+          <Card
+            title={`编辑菜品`}
+            style={{ width: "100%", maxWidth: 360, borderRadius: 12 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Space direction="vertical" style={{ width: "100%" }} size={12}>
+              <div>
+                <Text style={{ display: "block", marginBottom: 4, color: "#64748b", fontSize: 12 }}>名称</Text>
+                <Input
+                  value={editDishName}
+                  onChange={(e) => setEditDishName(e.target.value)}
+                  onPressEnter={handleSaveDish}
+                  maxLength={30}
+                />
+              </div>
+              <div>
+                <Text style={{ display: "block", marginBottom: 4, color: "#64748b", fontSize: 12 }}>分类</Text>
+                <Select
+                  value={editDishCategory}
+                  onChange={setEditDishCategory}
+                  style={{ width: "100%" }}
+                  options={Object.keys(CATEGORY_COLORS).map((c) => ({ value: c, label: c }))}
+                />
+              </div>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                <Button onClick={() => setEditDish(null)}>取消</Button>
                 <Button
                   type="primary"
-                  icon={<PlusOutlined />}
-                  loading={creatingDish}
-                  disabled={!newDishName.trim()}
-                  onClick={handleCreateAndAdd}
+                  loading={savingDish}
+                  onClick={handleSaveDish}
                   style={{ borderRadius: 8 }}
                 >
-                  创建并添加
+                  保存
                 </Button>
-              </Space>
+              </div>
             </Space>
           </Card>
         </div>

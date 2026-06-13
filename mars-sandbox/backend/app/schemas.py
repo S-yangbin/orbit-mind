@@ -290,8 +290,15 @@ class DishResponse(BaseModel):
 
 class DishCreate(BaseModel):
     name: str
-    category: str = "\u8364\u83dc"
+    category: str = "荤菜"
     ingredients: Optional[List[str]] = None
+    recipe: Optional[str] = None
+    tags: Optional[List[str]] = None
+
+
+class DishUpdate(BaseModel):
+    name: Optional[str] = None
+    category: Optional[str] = None
     recipe: Optional[str] = None
     tags: Optional[List[str]] = None
 

@@ -6,6 +6,7 @@ import type {
   Dish,
   DishListResponse,
   DishCreateData,
+  DishUpdateData,
   MealPlan,
   MealLog,
   MealLogListResponse,
@@ -53,6 +54,15 @@ export const fetchDishes = async (
 export const createDish = async (payload: DishCreateData): Promise<Dish> => {
   const { data } = await api.post<Dish>("/api/meals/dishes", payload);
   return data;
+};
+
+export const updateDish = async (dishId: number, payload: DishUpdateData): Promise<Dish> => {
+  const { data } = await api.put<Dish>(`/api/meals/dishes/${dishId}`, payload);
+  return data;
+};
+
+export const deleteDish = async (dishId: number): Promise<void> => {
+  await api.delete(`/api/meals/dishes/${dishId}`);
 };
 
 // --- Meal Plan ---

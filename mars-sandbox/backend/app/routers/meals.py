@@ -21,7 +21,7 @@ from ..utils.json_helpers import parse_json_field
 from ..utils.timezone import beijing_now
 from ..schemas import (
     FamilyMemberResponse, FamilyMemberCreate, FamilyMemberUpdate, FamilyMemberListResponse,
-    DishResponse, DishCreate, DishListResponse,
+    DishResponse, DishCreate, DishUpdate, DishListResponse,
     MealPlanResponse, MealPlanCurrentResponse, MealPlanGenerateRequest,
     MealPlanItemResponse, MealPlanItemAdd, MealPlanItemReplace, MealPlanItemDish,
     PhotoRecognizeResponse, RecognizedDish,
@@ -328,6 +328,56 @@ async def get_dish(
     if not dish:
         raise HTTPException(status_code=404, detail="Dish not found")
     return _dish_to_response(dish)
+
+
+@router.put("/dishes/{dish_id}", response_model=DishResponse)
+async def update_dish(
+    dish_id: int,
+    payload: DishUpdate,
+    db: Session = Depends(get_db),
+    _=Depends(require_auth),
+):
+    dish = db.query(Dish).filter(Dish.id == dish_id).first()
+    if not dish:
+        raise HTTPException(status_code=404, detail="Dish not found")
+
+    if payload.name is not None and payload.name != dish.name:
+        conflict = db.query(Dish).filter(Dish.name == payload.name, Dish.id != dish_id).first()
+        if conflict:
+            raise HTTPException(status_code=409, detail=f"Dish '{payload.name}' already exists")
+        dish.name = payload.name
+
+    if payload.category is not None:
+        dish.category = payload.category
+    if payload.recipe is not None:
+        dish.recipe = payload.recipe
+    if payload.tags is not None:
+        dish.tags = json.dumps(payload.tags, ensure_ascii=False)
+
+    db.commit()
+    db.refresh(dish)
+    return _dish_to_response(dish)
+
+
+@router.delete("/dishes/{dish_id}")
+async def delete_dish(
+    dish_id: int,
+    db: Session = Depends(get_db),
+    _=Depends(require_auth),
+):
+    dish = db.query(Dish).filter(Dish.id == dish_id).first()
+    if not dish:
+        raise HTTPException(status_code=404, detail="Dish not found")
+
+    # Cascade: remove all plan items referencing this dish, then delete the dish
+    ref_items = db.query(MealPlanItem).filter(MealPlanItem.dish_id == dish_id).all()
+    for item in ref_items:
+        db.delete(item)
+
+    db.delete(dish)
+    db.commit()
+    await _broadcast_meal_plan_update(db)
+    return {"status": "ok", "removed_plan_items": len(ref_items)}
 
 
 # ============================================================
