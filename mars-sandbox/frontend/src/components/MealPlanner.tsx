@@ -6,6 +6,7 @@ import {
   Tag,
   Popover,
   Select,
+  Input,
   message,
   Spin,
   Typography,
@@ -31,6 +32,7 @@ import {
   replacePlanItem,
   addPlanItem,
   fetchDishes,
+  createDish,
 } from "../api/meals";
 import { useIsMobile } from "../hooks/useIsMobile";
 import { mealPhotoToUrl } from "../utils";
@@ -101,6 +103,9 @@ export function MealPlanner() {
   const [dishes, setDishes] = useState<Dish[]>([]);
   const [replaceItem, setReplaceItem] = useState<MealPlanItem | null>(null);
   const [addTarget, setAddTarget] = useState<{ date: string; meal_type: string } | null>(null);
+  const [newDishName, setNewDishName] = useState("");
+  const [newDishCategory, setNewDishCategory] = useState("荤菜");
+  const [creatingDish, setCreatingDish] = useState(false);
   const [datePhotos, setDatePhotos] = useState<Record<string, string>>({});
   const [refreshing, setRefreshing] = useState(false);
   const isMobile = useIsMobile();
@@ -256,6 +261,31 @@ export function MealPlanner() {
       message.success("已添加");
     } catch {
       message.error("添加失败");
+    }
+  };
+
+  const handleCreateAndAdd = async () => {
+    if (!addTarget || !newDishName.trim()) return;
+    setCreatingDish(true);
+    try {
+      const dish = await createDish({
+        name: newDishName.trim(),
+        category: newDishCategory,
+      });
+      await addPlanItem(addTarget.date, addTarget.meal_type, dish.id);
+      await loadData();
+      setAddTarget(null);
+      setNewDishName("");
+      message.success(`已创建并添加「${dish.name}」`);
+    } catch (e: unknown) {
+      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      if (detail?.includes("already exists")) {
+        message.warning("该菜品已存在，请从列表中选择");
+      } else {
+        message.error("创建菜品失败");
+      }
+    } finally {
+      setCreatingDish(false);
     }
   };
 
@@ -657,14 +687,50 @@ export function MealPlanner() {
             zIndex: 1000,
             padding: 16,
           }}
-          onClick={() => setAddTarget(null)}
+          onClick={() => { setAddTarget(null); setNewDishName(""); }}
         >
           <Card
             title={`添加菜品 - ${MEAL_LABELS[addTarget.meal_type]}`}
-            style={{ width: "100%", maxWidth: 320, borderRadius: 12 }}
+            style={{ width: "100%", maxWidth: 360, borderRadius: 12 }}
             onClick={(e) => e.stopPropagation()}
           >
+            <Text style={{ display: "block", marginBottom: 8, color: "#64748b" }}>
+              从已有菜品选择:
+            </Text>
             {dishSelector(handleAdd)}
+
+            <Divider style={{ margin: "16px 0" }} />
+
+            <Text style={{ display: "block", marginBottom: 8, color: "#64748b" }}>
+              或新建菜品:
+            </Text>
+            <Space direction="vertical" style={{ width: "100%" }} size={8}>
+              <Input
+                placeholder="输入菜品名称..."
+                value={newDishName}
+                onChange={(e) => setNewDishName(e.target.value)}
+                onPressEnter={handleCreateAndAdd}
+                maxLength={30}
+              />
+              <Space style={{ width: "100%", justifyContent: "space-between" }}>
+                <Select
+                  value={newDishCategory}
+                  onChange={setNewDishCategory}
+                  style={{ width: 120 }}
+                  options={Object.keys(CATEGORY_COLORS).map((c) => ({ value: c, label: c }))}
+                />
+                <Button
+                  type="primary"
+                  icon={<PlusOutlined />}
+                  loading={creatingDish}
+                  disabled={!newDishName.trim()}
+                  onClick={handleCreateAndAdd}
+                  style={{ borderRadius: 8 }}
+                >
+                  创建并添加
+                </Button>
+              </Space>
+            </Space>
           </Card>
         </div>
       )}
