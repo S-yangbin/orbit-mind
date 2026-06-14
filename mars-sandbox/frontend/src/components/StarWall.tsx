@@ -1,4 +1,4 @@
-import { memo, useMemo } from "react";
+import { memo, useMemo, useState } from "react";
 import type { StarSummary, StarReward } from "../types";
 
 function formatStarTime(dateStr: string | null): string {
@@ -48,8 +48,10 @@ function StarSVG() {
 
 export const StarWall = memo(function StarWall({
   starSummary,
+  onClick,
 }: {
   starSummary: StarSummary | undefined;
+  onClick?: () => void;
 }) {
   const totalStarCount = useMemo(() => {
     if (!starSummary) return 0;
@@ -72,7 +74,7 @@ export const StarWall = memo(function StarWall({
   const { total_stars, total_value, unredeemed_stars, unredeemed_value, recent_stars } = starSummary;
 
   return (
-    <div className="sw-root">
+    <div className="sw-root" onClick={onClick} style={onClick ? { cursor: "pointer" } : undefined}>
       {/* 共享 SVG 渐变定义 */}
       <svg style={{ position: 'absolute', width: 0, height: 0 }}>
         <defs>
@@ -162,8 +164,8 @@ export const StarWall = memo(function StarWall({
         /* ── root ── */
         .sw-root {
           border-radius: 20px; padding: 20px 24px; position: relative;
-          display: flex; flex-direction: column; gap: 16px; min-height: 60vh;
-          overflow: hidden;
+          display: flex; flex-direction: column; gap: 16px;
+          height: 100%; overflow: hidden; box-sizing: border-box;
         }
         .sw-loading {
           background: transparent; text-align: center; color: rgba(255,255,255,0.5);
@@ -180,7 +182,7 @@ export const StarWall = memo(function StarWall({
         }
 
         /* ── header ── */
-        .sw-header { display: flex; align-items: center; gap: 12px; position: relative; z-index: 1; }
+        .sw-header { display: flex; align-items: center; gap: 12px; position: relative; z-index: 1; flex-shrink: 0; }
         .sw-header-icon { font-size: 28px; }
         .sw-header-title { font-size: 22px; font-weight: 700; color: #fff;
           text-shadow: 0 0 16px rgba(251,191,36,.4), 0 2px 8px rgba(251,191,36,.3); letter-spacing: 1px; }
@@ -190,7 +192,7 @@ export const StarWall = memo(function StarWall({
           box-shadow: 0 0 8px rgba(251,191,36,.2); }
 
         /* ── cards ── */
-        .sw-cards { display: flex; gap: 12px; flex-wrap: wrap; position: relative; z-index: 1; }
+        .sw-cards { display: flex; gap: 12px; flex-wrap: wrap; position: relative; z-index: 1; flex-shrink: 0; }
         .sw-card { flex: 1; min-width: 120px; border-radius: 16px; padding: 16px 18px;
           position: relative; overflow: hidden; }
         .sw-card-deco { position: absolute; top: -20px; right: -20px; width: 80px; height: 80px;
@@ -216,11 +218,11 @@ export const StarWall = memo(function StarWall({
 
         /* ── 星星网格 ── */
         .sw-grid {
-          position: relative; overflow: hidden; border-radius: 16px;
-          padding: 16px 20px; min-height: 100px;
+          position: relative; overflow-y: auto; border-radius: 16px;
+          padding: 16px 20px;
           background: rgba(255,255,255,.03);
           border: 1px solid rgba(251,191,36,.08);
-          z-index: 1;
+          z-index: 1; flex: 1; min-height: 0;
         }
         .sw-stars {
           word-break: break-all;
@@ -230,11 +232,12 @@ export const StarWall = memo(function StarWall({
         }
 
         /* ── recent records ── */
-        .sw-recent { margin-top: auto; position: relative; z-index: 1; }
+        .sw-recent { position: relative; z-index: 1; flex: 1; min-height: 0; display: flex; flex-direction: column; flex-shrink: 0; max-height: 45%; }
         .sw-recent-title { font-size: 14px; font-weight: 600; color: rgba(255,255,255,.7);
           margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
-        .sw-recent-list { display: flex; flex-direction: column; gap: 8px; max-height: 220px;
+        .sw-recent-list { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0;
           overflow-y: auto; padding-right: 4px; }
+        .sw-recent-title { flex-shrink: 0; }
         .sw-rec { display: flex; align-items: center; gap: 12px;
           background: rgba(255,255,255,.04); border-radius: 12px; padding: 10px 14px;
           border: 1px solid transparent; }
@@ -265,3 +268,234 @@ export const StarWall = memo(function StarWall({
     </div>
   );
 });
+
+/** 生成闪光星星位置 */
+function generateSparkleProps(count: number) {
+  const props = [];
+  for (let i = 0; i < count; i++) {
+    const seed = i * 7 + 13;
+    props.push({
+      left: ((seed * 17) % 100),
+      top: ((seed * 23 + i * 3) % 100),
+      size: 6 + (seed % 10),
+      delay: (i * 0.37) % 4,
+      duration: 1.8 + (seed % 20) / 15,
+    });
+  }
+  return props;
+}
+
+/* ── 全屏星星墙弹窗 ── */
+export function StarWallFullModal({
+  starSummary,
+  onClose,
+}: {
+  starSummary: StarSummary | undefined;
+  onClose: () => void;
+}) {
+  const totalStarCount = useMemo(() => {
+    if (!starSummary) return 0;
+    let count = 0;
+    for (const rec of starSummary.recent_stars) count += rec.stars;
+    return count;
+  }, [starSummary]);
+
+  const starProps = useMemo(() => generateStarProps(totalStarCount), [totalStarCount]);
+  const sparkleCount = Math.min(totalStarCount * 2, 40);
+  const sparkleProps = useMemo(() => generateSparkleProps(sparkleCount), [sparkleCount]);
+
+  if (!starSummary) return null;
+  const { total_stars, total_value, unredeemed_stars, unredeemed_value, recent_stars } = starSummary;
+
+  return (
+    <div
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      style={{
+        position: "fixed", inset: 0, zIndex: 10000,
+        background: "rgba(0,0,0,0.92)",
+        display: "flex", flexDirection: "column",
+        overflowY: "auto",
+      }}
+    >
+      {/* 共享 SVG 渐变定义 */}
+      <svg style={{ position: "absolute", width: 0, height: 0 }}>
+        <defs>
+          <linearGradient id="swmStarGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#ffe066" />
+            <stop offset="40%" stopColor="#fbbf24" />
+            <stop offset="100%" stopColor="#d97706" />
+          </linearGradient>
+          <linearGradient id="swmStarHi" x1="0%" y1="0%" x2="50%" y2="60%">
+            <stop offset="0%" stopColor="#fff8e1" stopOpacity={0.7} />
+            <stop offset="100%" stopColor="#fff8e1" stopOpacity={0} />
+          </linearGradient>
+        </defs>
+      </svg>
+
+      {/* 关闭按钮 */}
+      <button
+        onClick={onClose}
+        style={{
+          position: "fixed", top: 20, right: 24, zIndex: 10001,
+          width: 44, height: 44, borderRadius: "50%",
+          background: "rgba(255,255,255,0.15)",
+          border: "none", color: "#fff", fontSize: 22,
+          cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+          backdropFilter: "blur(8px)",
+        }}
+      >✕</button>
+
+      <div style={{
+        flex: 1, display: "flex", flexDirection: "column", gap: 20,
+        padding: "60px 40px 40px", maxWidth: 900, margin: "0 auto", width: "100%",
+      }}>
+        {/* Header */}
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 48, marginBottom: 8 }}>⭐</div>
+          <div style={{
+            fontSize: 32, fontWeight: 800, color: "#fff",
+            textShadow: "0 0 24px rgba(251,191,36,.5), 0 2px 8px rgba(251,191,36,.3)",
+          }}>我的星星墙</div>
+        </div>
+
+        {/* Summary cards */}
+        <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+          <div style={{
+            flex: 1, minWidth: 140, borderRadius: 20, padding: "20px 22px",
+            background: "linear-gradient(135deg, #fbbf24, #d97706)",
+            boxShadow: "0 8px 32px rgba(245,158,11,.4)",
+          }}>
+            <div style={{ fontSize: 13, color: "rgba(255,255,255,.9)", fontWeight: 500 }}>总星星数</div>
+            <div style={{ fontSize: 44, fontWeight: 800, color: "#fff" }}>{total_stars}<span style={{ fontSize: 16, opacity: .85 }}>颗</span></div>
+          </div>
+          <div style={{
+            flex: 1, minWidth: 140, borderRadius: 20, padding: "20px 22px",
+            background: "linear-gradient(135deg, #34d399, #059669)",
+            boxShadow: "0 8px 32px rgba(16,185,129,.4)",
+          }}>
+            <div style={{ fontSize: 13, color: "rgba(255,255,255,.9)", fontWeight: 500 }}>可兑换</div>
+            <div style={{ fontSize: 44, fontWeight: 800, color: "#fff" }}>{unredeemed_value}<span style={{ fontSize: 16, opacity: .85 }}>元</span></div>
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,.8)" }}>{unredeemed_stars} 颗未兑换</div>
+          </div>
+          <div style={{
+            flex: 1, minWidth: 140, borderRadius: 20, padding: "20px 22px",
+            background: "linear-gradient(135deg, #a78bfa, #6d28d9)",
+            boxShadow: "0 8px 32px rgba(124,58,237,.4)",
+          }}>
+            <div style={{ fontSize: 13, color: "rgba(255,255,255,.9)", fontWeight: 500 }}>累计价值</div>
+            <div style={{ fontSize: 44, fontWeight: 800, color: "#fff" }}>{total_value}<span style={{ fontSize: 16, opacity: .85 }}>元</span></div>
+          </div>
+        </div>
+
+        {/* 星星网格 + 闪光效果 */}
+        {totalStarCount > 0 ? (
+          <div style={{
+            position: "relative", borderRadius: 20, padding: "24px 28px",
+            background: "rgba(255,255,255,.04)",
+            border: "1px solid rgba(251,191,36,.2)",
+            minHeight: 200,
+          }}>
+            {/* 闪光层 */}
+            {sparkleProps.map((sp, i) => (
+              <span key={`sp-${i}`} className={`swm-sparkle swm-sp-${i}`}>
+                <SparkleSVG size={sp.size} />
+              </span>
+            ))}
+            <div style={{
+              display: "flex", flexWrap: "wrap", gap: "8px 10px",
+              lineHeight: 1.8, position: "relative", zIndex: 1,
+            }}>
+              {starProps.map((_p, i) => (
+                <span key={i} className={`swm-s${i}`}>
+                  <svg viewBox="0 0 24 24" width="100%" height="100%">
+                    <path d="M12 2l2.9 6.26L22 9.27l-5 4.87L18.18 22 12 18.56 5.82 22 7 14.14 2 9.27l7.1-1.01z"
+                      fill="url(#swmStarGrad)" />
+                    <path d="M12 2l2.9 6.26L22 9.27l-5 4.87L18.18 22 12 18.56 5.82 22 7 14.14 2 9.27l7.1-1.01z"
+                      fill="url(#swmStarHi)" />
+                  </svg>
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div style={{ textAlign: "center", color: "rgba(255,255,255,.5)", padding: "60px 0", fontSize: 18 }}>
+            <div style={{ fontSize: 64, opacity: .6, marginBottom: 12 }}>⭐</div>
+            完成学习计划就能获得星星哦
+          </div>
+        )}
+
+        {/* Recent records */}
+        {recent_stars.length > 0 && (
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 600, color: "rgba(255,255,255,.7)", marginBottom: 12 }}>🏆 最近获得</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {recent_stars.map((rec: StarReward, ri: number) => (
+                <div key={rec.id} style={{
+                  display: "flex", alignItems: "center", gap: 14,
+                  background: ri === 0 ? "linear-gradient(90deg, rgba(251,191,36,.15), rgba(251,191,36,.04))" : "rgba(255,255,255,.04)",
+                  borderRadius: 14, padding: "12px 16px",
+                  border: ri === 0 ? "1px solid rgba(251,191,36,.35)" : "1px solid transparent",
+                  opacity: rec.redeemed === 1 ? .65 : 1,
+                }}>
+                  <div style={{
+                    width: 40, height: 40, borderRadius: "50%",
+                    background: "linear-gradient(135deg, rgba(251,191,36,.2), rgba(245,158,11,.1))",
+                    display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0,
+                  }}>⭐</div>
+                  <div style={{ fontSize: 22, fontWeight: 800, color: "#fbbf24", minWidth: 40, textShadow: "0 0 8px rgba(251,191,36,.3)" }}>+{rec.stars}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 15, color: "#fff", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{rec.reason || "学习奖励"}</div>
+                    <div style={{ fontSize: 12, color: "rgba(255,255,255,.45)", marginTop: 2 }}>{rec.awarded_by} · {formatStarTime(rec.created_at)}</div>
+                  </div>
+                  {rec.redeemed === 1
+                    ? <span style={{ fontSize: 12, color: "#34d399", background: "rgba(52,211,153,.12)", padding: "4px 10px", borderRadius: 8, fontWeight: 600 }}>已兑换 ✓</span>
+                    : ri === 0 && <span style={{ fontSize: 11, color: "#fbbf24", background: "rgba(251,191,36,.15)", padding: "4px 10px", borderRadius: 8, fontWeight: 700 }}>NEW</span>
+                  }
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <style>{`
+        @keyframes swm-sparkle {
+          0%, 100% { opacity: 0; transform: scale(0.3) rotate(0deg); }
+          30% { opacity: 1; transform: scale(1.1) rotate(15deg); }
+          70% { opacity: 0.7; transform: scale(0.8) rotate(-10deg); }
+        }
+        .swm-sparkle {
+          position: absolute; pointer-events: none; z-index: 2;
+          animation-name: swm-sparkle;
+          animation-iteration-count: infinite;
+          animation-timing-function: ease-in-out;
+        }
+        ${starProps.map((p, i) =>
+          `.swm-s${i}{display:inline-block;line-height:1;` +
+          `width:${p.size.toFixed(1)}px;height:${p.size.toFixed(1)}px;` +
+          `transform:rotate(${p.rotate.toFixed(1)}deg);` +
+          `filter:drop-shadow(0 3px 6px rgba(0,0,0,.35)) drop-shadow(0 1px 2px rgba(180,120,0,.3));` +
+          `vertical-align:middle;margin:2px;}`
+        ).join('')}
+        ${sparkleProps.map((sp, i) =>
+          `.swm-sp-${i}{left:${sp.left}%;top:${sp.top}%;` +
+          `width:${sp.size}px;height:${sp.size}px;` +
+          `animation-delay:${sp.delay.toFixed(2)}s;` +
+          `animation-duration:${sp.duration.toFixed(2)}s;}`
+        ).join('')}
+      `}</style>
+    </div>
+  );
+}
+
+/** 闪光 SVG（白色四芒星） */
+function SparkleSVG({ size }: { size: number }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size}>
+      <path
+        d="M12 0L14.5 9.5 24 12 14.5 14.5 12 24 9.5 14.5 0 12 9.5 9.5z"
+        fill="rgba(255,255,220,0.9)"
+      />
+    </svg>
+  );
+}

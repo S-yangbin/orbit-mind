@@ -13,7 +13,7 @@ import {
   RightOutlined,
 } from "@ant-design/icons";
 import { DashboardPets } from "./DashboardPets";
-import { StarWall } from "./StarWall";
+import { StarWall, StarWallFullModal } from "./StarWall";
 import { useDashboardWs } from "../hooks/useDashboardWs";
 import { updateDailyItem, fetchDailySchedule } from "../api/schedule";
 import { updateMember } from "../api/meals";
@@ -156,6 +156,7 @@ export function Dashboard() {
   const [avatarEditMember, setAvatarEditMember] = useState<DashboardFamilyMember | null>(null);
   const [avatarEditValue, setAvatarEditValue] = useState("");
   const [avatarSaving, setAvatarSaving] = useState(false);
+  const [starWallModalOpen, setStarWallModalOpen] = useState(false);
 
   const openAvatarEdit = (member: DashboardFamilyMember) => {
     setAvatarEditMember(member);
@@ -322,6 +323,7 @@ export function Dashboard() {
   const swipeStartXRef = useRef<number | null>(null);
   const swipeStartYRef = useRef<number | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const pageRefs = useRef<(HTMLDivElement | null)[]>([null, null]);
 
   useEffect(() => {
     const SWIPE_THRESHOLD = 60; // 最小滑动距离 (px)
@@ -376,9 +378,8 @@ export function Dashboard() {
 
   // 页面切换时重置滚动位置
   useEffect(() => {
-    if (scrollContainerRef.current) {
-      scrollContainerRef.current.scrollTop = 0;
-    }
+    const page = pageRefs.current[dashboardPage];
+    if (page) page.scrollTop = 0;
   }, [dashboardPage]);
 
   // 每分钟刷新（用于夜间模式判断）
@@ -741,12 +742,13 @@ export function Dashboard() {
           </div>
         </div>
 
-        {/* 可滚动内容区 */}
+        {/* 内容区：dots固定 + 每页独立滚动 */}
         <div ref={scrollContainerRef} style={{
           flex: 1,
-          overflow: "auto",
-          padding: "20px 32px 20px",
-          position: "relative",
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
+          minHeight: 0,
         }}>
         {/* 页面导航指示器 */}
         <div style={{
@@ -755,6 +757,8 @@ export function Dashboard() {
           justifyContent: "center",
           gap: 8,
           marginBottom: 16,
+          flexShrink: 0,
+          padding: "20px 32px 0",
         }}>
           <button
             onClick={() => {
@@ -792,15 +796,16 @@ export function Dashboard() {
         </div>
 
         {/* 滑动容器：两页并排，通过 translateX 平滑切换 */}
-        <div style={{ overflow: "hidden" }}>
+        <div style={{ overflow: "hidden", flex: 1, minHeight: 0 }}>
         <div style={{
           display: "flex",
           width: "200%",
+          height: "100%",
           transform: `translateX(-${dashboardPage * 50}%)`,
           transition: "transform 0.38s cubic-bezier(0.4, 0, 0.2, 1)",
           willChange: "transform",
         }}>
-        <div style={{ width: "50%" }}>
+        <div ref={el => { pageRefs.current[0] = el; }} style={{ width: "50%", height: "100%", overflowY: "auto", padding: "0 32px 20px" }}>
         {/* 两栏布局 */}
         <div style={{
           display: "grid",
@@ -1066,12 +1071,13 @@ export function Dashboard() {
           </div>
         </div>
         </div>
-        <div style={{ width: "50%" }}>
+        <div ref={el => { pageRefs.current[1] = el; }} style={{ width: "50%", height: "100%", overflow: "hidden", padding: "0 32px 20px" }}>
         {/* 学习计划页面 */}
         <SchedulePage
           todaySchedule={offsetSchedule !== null ? offsetSchedule : (data.today_schedule || [])}
           dayOffset={scheduleDayOffset}
           onDayOffsetChange={setScheduleDayOffset}
+          onStarWallClick={() => setStarWallModalOpen(true)}
           onMarkComplete={(item: TodayScheduleItem) => {
             if (item.completed === 1) {
               updateDailyItem(item.id, { completed: 0 })
@@ -1089,6 +1095,13 @@ export function Dashboard() {
         </div>
         </div>
         </div>
+        {/* 全屏星星墙弹窗 */}
+        {starWallModalOpen && (
+          <StarWallFullModal
+            starSummary={data.star_summary}
+            onClose={() => setStarWallModalOpen(false)}
+          />
+        )}
 
         {/* 旅游计划弹窗 */}
         <Modal
@@ -1332,6 +1345,7 @@ const SchedulePage = memo(function SchedulePage({
   onDayOffsetChange,
   onMarkComplete,
   onFullscreen,
+  onStarWallClick,
   starSummary,
 }: {
   todaySchedule: TodayScheduleItem[];
@@ -1339,6 +1353,7 @@ const SchedulePage = memo(function SchedulePage({
   onDayOffsetChange: (n: number) => void;
   onMarkComplete: (item: TodayScheduleItem) => void;
   onFullscreen: () => void;
+  onStarWallClick: () => void;
   starSummary: import("../types").StarSummary | undefined;
 }) {
   const d = new Date();
@@ -1353,7 +1368,8 @@ const SchedulePage = memo(function SchedulePage({
     <div style={{
       display: "flex",
       gap: 16,
-      minHeight: "60vh",
+      height: "100%",
+      minHeight: 0,
     }}>
       {/* Left: Schedule list (1/3) */}
       <div style={{
@@ -1365,6 +1381,7 @@ const SchedulePage = memo(function SchedulePage({
         display: "flex",
         flexDirection: "column",
         minWidth: 0,
+        minHeight: 0,
       }}>
         {/* Header: date + nav + fullscreen */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
@@ -1489,8 +1506,8 @@ const SchedulePage = memo(function SchedulePage({
       </div>
 
       {/* Right: Star Wall (2/3) */}
-      <div style={{ flex: 2, minWidth: 0 }}>
-        <StarWall starSummary={starSummary} />
+      <div style={{ flex: 2, minWidth: 0, height: "100%" }}>
+        <StarWall starSummary={starSummary} onClick={onStarWallClick} />
       </div>
     </div>
   );

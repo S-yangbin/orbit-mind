@@ -29,17 +29,35 @@ a, button, .ant-card, .ant-tag, .ant-btn {
   transform: translateY(-2px);
 }
 
-/* Subtle scrollbar */
+/* Subtle scrollbar – 悬停时才显示 */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: transparent;
   border-radius: 3px;
+  transition: background 0.2s;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
+}
+*:hover::-webkit-scrollbar-thumb {
+  background: rgba(0,0,0,0.25);
+}
+*:hover::-webkit-scrollbar-thumb:hover {
+  background: rgba(0,0,0,0.45);
+}
+/* 深色背景容器（Dashboard）悬停时使用浅色滚动条 */
+.sw-root:hover::-webkit-scrollbar-thumb,
+.sw-grid:hover::-webkit-scrollbar-thumb,
+.sw-recent-list:hover::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.25);
+}
+.sw-root:hover::-webkit-scrollbar-thumb:hover,
+.sw-grid:hover::-webkit-scrollbar-thumb:hover,
+.sw-recent-list:hover::-webkit-scrollbar-thumb:hover {
+  background: rgba(255,255,255,0.45);
 }
 
 /* Ant Design overrides for mobile */
