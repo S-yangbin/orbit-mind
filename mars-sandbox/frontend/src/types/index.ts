@@ -259,6 +259,7 @@ export interface PhotoRecognizeResult {
   recognized_dishes: RecognizedDish[];
   date: string;
   meal_type: string;
+  recognize_message: string | null;
 }
 
 export interface MealLogDish {

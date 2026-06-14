@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import {
   Card,
   Button,
@@ -15,6 +15,8 @@ import {
   Result,
   List,
   Image,
+  AutoComplete,
+  Alert,
 } from "antd";
 import {
   CameraOutlined,
@@ -23,8 +25,8 @@ import {
   DeleteOutlined,
   PlusOutlined,
 } from "@ant-design/icons";
-import type { RecognizedDish, MealLogDish, FamilyMember } from "../types";
-import { recognizePhoto, createMealLog, fetchMembers } from "../api/meals";
+import type { RecognizedDish, MealLogDish, FamilyMember, Dish } from "../types";
+import { recognizePhoto, createMealLog, fetchMembers, fetchDishes } from "../api/meals";
 import dayjs from "dayjs";
 import { useIsMobile } from "../hooks/useIsMobile";
 
@@ -56,12 +58,49 @@ export function MealRecorder() {
   const [newDishName, setNewDishName] = useState("");
   const [members, setMembers] = useState<FamilyMember[]>([]);
   const [dishLikedBy, setDishLikedBy] = useState<Record<string, number[]>>({});
+  const [recognizeMessage, setRecognizeMessage] = useState<string | null>(null);
+  const [allDishes, setAllDishes] = useState<Dish[]>([]);
+  const [dishOptions, setDishOptions] = useState<{ value: string; label: string; dish_id: number }[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
   const isMobile = useIsMobile();
 
   useEffect(() => {
     fetchMembers().then(setMembers).catch(() => {});
+    // Load all dishes for search/autocomplete
+    fetchDishes(1, 200).then((res) => setAllDishes(res.items)).catch(() => {});
   }, []);
+
+  // Filter dish options based on search input
+  const handleDishSearch = useCallback(
+    (keyword: string) => {
+      if (!keyword.trim()) {
+        setDishOptions(
+          allDishes.slice(0, 20).map((d) => ({
+            value: d.name,
+            label: d.name,
+            dish_id: d.id,
+          }))
+        );
+        return;
+      }
+      const lower = keyword.toLowerCase();
+      const filtered = allDishes
+        .filter((d) => d.name.toLowerCase().includes(lower))
+        .slice(0, 15)
+        .map((d) => ({
+          value: d.name,
+          label: d.name,
+          dish_id: d.id,
+        }));
+      // If no match, still show the typed text as option
+      if (filtered.length === 0 && keyword.trim()) {
+        setDishOptions([{ value: keyword.trim(), label: `${keyword.trim()}（新建）`, dish_id: 0 }]);
+      } else {
+        setDishOptions(filtered);
+      }
+    },
+    [allDishes]
+  );
 
   const handleFileSelected = async (file: File) => {
     let displayFile = file;
@@ -94,6 +133,7 @@ export function MealRecorder() {
       );
       setImagePath(result.image_path);
       setRecognizedDishes(result.recognized_dishes);
+      setRecognizeMessage(result.recognize_message);
       setEditDishes(
         result.recognized_dishes.map((d) => ({
           dish_id: d.dish_id,
@@ -102,7 +142,7 @@ export function MealRecorder() {
       );
       setStep("confirm");
     } catch {
-      message.error("识别失败，请重试");
+      message.error("识别请求失败，请重试");
       setImageUrl(null);
     } finally {
       setRecognizing(false);
@@ -114,11 +154,22 @@ export function MealRecorder() {
     setEditDishes(editDishes.filter((_, i) => i !== idx));
   };
 
-  const addManualDish = () => {
-    const name = newDishName.trim();
+  const addDishFromSearch = (dishName: string) => {
+    const name = dishName.trim();
     if (!name) return;
-    setEditDishes([...editDishes, { dish_id: null, name }]);
+    // Check if already added
+    if (editDishes.some((d) => d.name === name)) {
+      message.info(`${name} 已在列表中`);
+      return;
+    }
+    // Find matching dish_id from allDishes
+    const matched = allDishes.find((d) => d.name === name);
+    setEditDishes([...editDishes, { dish_id: matched?.id ?? null, name }]);
     setNewDishName("");
+  };
+
+  const addManualDish = () => {
+    addDishFromSearch(newDishName);
   };
 
   const handleSave = async () => {
@@ -158,6 +209,7 @@ export function MealRecorder() {
     setRating(0);
     setNote("");
     setDishLikedBy({});
+    setRecognizeMessage(null);
   };
 
   return (
@@ -262,87 +314,109 @@ export function MealRecorder() {
             )}
           </div>
 
-          <Text strong style={{ display: "block", marginBottom: 8 }}>
-            识别出的菜品:
-          </Text>
-          <List
-            size="small"
-            dataSource={editDishes}
-            renderItem={(d, idx) => {
-              const original = recognizedDishes.find((r) => r.name === d.name);
-              const matched = original?.matched ?? !!d.dish_id;
-              const likedMembers = dishLikedBy[d.name] || [];
-              return (
-                <List.Item
-                  actions={[
-                    <Button
-                      key="del"
-                      type="text"
-                      danger
-                      size="small"
-                      icon={<DeleteOutlined />}
-                      onClick={() => removeDish(idx)}
-                    />,
-                  ]}
-                >
-                  <div style={{ width: "100%" }}>
-                    <Space>
-                      {matched ? (
-                        <CheckCircleOutlined style={{ color: "#52c41a" }} />
-                      ) : (
-                        <span style={{ color: "#faad14" }} title="新菜品">!</span>
-                      )}
-                      <Text>{d.name}</Text>
-                      {matched && <Tag color="green">已匹配</Tag>}
-                      {!matched && <Tag color="orange">新菜品</Tag>}
-                    </Space>
-                    {members.length > 0 && (
-                      <div style={{ marginTop: 6 }}>
-                        <Space size={4} wrap>
-                          <Text type="secondary" style={{ fontSize: 12 }}>谁喜欢:</Text>
-                          {members.map((m) => (
-                            <Button
-                              key={m.id}
-                              size="small"
-                              type={likedMembers.includes(m.id) ? "primary" : "default"}
-                              style={{ fontSize: 12, padding: "0 8px", height: 24 }}
-                              onClick={() => {
-                                setDishLikedBy((prev) => {
-                                  const cur = prev[d.name] || [];
-                                  return {
-                                    ...prev,
-                                    [d.name]: cur.includes(m.id)
-                                      ? cur.filter((id) => id !== m.id)
-                                      : [...cur, m.id],
-                                  };
-                                });
-                              }}
-                            >
-                              {m.avatar} {m.name}
-                            </Button>
-                          ))}
-                        </Space>
-                      </div>
-                    )}
-                  </div>
-                </List.Item>
-              );
-            }}
-          />
-
-          <Space style={{ marginTop: 8, marginBottom: 16 }}>
-            <Input
-              size="small"
-              placeholder="添加遗漏的菜品..."
-              value={newDishName}
-              onChange={(e) => setNewDishName(e.target.value)}
-              onPressEnter={addManualDish}
-              style={{ width: 160 }}
+          {recognizeMessage && (
+            <Alert
+              message={recognizeMessage}
+              type="warning"
+              showIcon
+              style={{ marginBottom: 12 }}
             />
-            <Button size="small" icon={<PlusOutlined />} onClick={addManualDish}>
-              添加
-            </Button>
-          </Space>
+          )}
+
+          {editDishes.length > 0 && (
+            <>
+              <Text strong style={{ display: "block", marginBottom: 8 }}>
+                识别出的菜品:
+              </Text>
+              <List
+                size="small"
+                dataSource={editDishes}
+                renderItem={(d, idx) => {
+                  const original = recognizedDishes.find((r) => r.name === d.name);
+                  const matched = original?.matched ?? !!d.dish_id;
+                  const likedMembers = dishLikedBy[d.name] || [];
+                  return (
+                    <List.Item
+                      actions={[
+                        <Button
+                          key="del"
+                          type="text"
+                          danger
+                          size="small"
+                          icon={<DeleteOutlined />}
+                          onClick={() => removeDish(idx)}
+                        />,
+                      ]}
+                    >
+                      <div style={{ width: "100%" }}>
+                        <Space>
+                          {matched ? (
+                            <CheckCircleOutlined style={{ color: "#52c41a" }} />
+                          ) : (
+                            <span style={{ color: "#faad14" }} title="新菜品">!</span>
+                          )}
+                          <Text>{d.name}</Text>
+                          {matched && <Tag color="green">已匹配</Tag>}
+                          {!matched && <Tag color="orange">新菜品</Tag>}
+                        </Space>
+                        {members.length > 0 && (
+                          <div style={{ marginTop: 6 }}>
+                            <Space size={4} wrap>
+                              <Text type="secondary" style={{ fontSize: 12 }}>谁喜欢:</Text>
+                              {members.map((m) => (
+                                <Button
+                                  key={m.id}
+                                  size="small"
+                                  type={likedMembers.includes(m.id) ? "primary" : "default"}
+                                  style={{ fontSize: 12, padding: "0 8px", height: 24 }}
+                                  onClick={() => {
+                                    setDishLikedBy((prev) => {
+                                      const cur = prev[d.name] || [];
+                                      return {
+                                        ...prev,
+                                        [d.name]: cur.includes(m.id)
+                                          ? cur.filter((id) => id !== m.id)
+                                          : [...cur, m.id],
+                                      };
+                                    });
+                                  }}
+                                >
+                                  {m.avatar} {m.name}
+                                </Button>
+                              ))}
+                            </Space>
+                          </div>
+                        )}
+                      </div>
+                    </List.Item>
+                  );
+                }}
+              />
+            </>
+          )}
+
+          <div style={{ marginTop: 12, marginBottom: 16 }}>
+            <Text strong style={{ display: "block", marginBottom: 6 }}>
+              {editDishes.length > 0 ? "添加遗漏的菜品:" : "请添加菜品:"}
+            </Text>
+            <Space>
+              <AutoComplete
+                size="small"
+                value={newDishName}
+                options={dishOptions}
+                onSearch={handleDishSearch}
+                onChange={setNewDishName}
+                onSelect={(val: string) => {
+                  addDishFromSearch(val);
+                }}
+                placeholder="搜索或输入菜名..."
+                style={{ width: 200 }}
+              />
+              <Button size="small" icon={<PlusOutlined />} onClick={addManualDish}>
+                添加
+              </Button>
+            </Space>
+          </div>
 
           <div style={{ marginBottom: 12 }}>
             <Text strong>评分: </Text>

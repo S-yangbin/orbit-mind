@@ -47,15 +47,25 @@ def recognize_dishes(image_path: str) -> List[Dict[str, Any]]:
 
     Returns a list of dicts with keys: name, category
     """
+    system_prompt = (
+        "你是一个专业的菜品识别助手。用户会发送一张餐桌或菜品照片，"
+        "你需要仔细观察照片中的所有菜品，并返回 JSON 数组。"
+        "即使照片模糊或菜品不太常见，也要尽力识别并给出最合理的菜名。"
+        "只返回 JSON，不要任何额外文字。"
+    )
     prompt = (
-        "请仔细观察这张餐桌照片，识别出所有菜品。"
-        "返回严格的 JSON 数组格式，每个元素包含 name(菜名) 和 category(分类:荤菜/素菜/汤/主食/凉菜/早点)。"
-        "只返回 JSON，不要其他文字。"
-        '示例格式: [{"name":"红烧肉","category":"荤菜"},{"name":"清炒西兰花","category":"素菜"}]'
+        "请仔细观察这张照片，识别出照片中所有的菜品（包括主食、汤、小吃等）。\n"
+        "要求：\n"
+        "1. 尽可能识别出每一道菜，给出常见的中文菜名\n"
+        "2. 每个菜品标注分类：荤菜/素菜/汤/主食/凉菜/早点\n"
+        "3. 如果照片中有米饭、面条等主食也要识别\n"
+        "4. 返回严格的 JSON 数组，不要任何其他文字\n\n"
+        '格式示例: [{"name":"红烧肉","category":"荤菜"},{"name":"清炒西兰花","category":"素菜"},{"name":"米饭","category":"主食"}]'
     )
     output = _run_bl([
         "omni",
         "--image", image_path,
+        "--system", system_prompt,
         "--message", prompt,
         "--text-only",
         "--output", "json",
@@ -86,7 +96,13 @@ def recognize_dishes(image_path: str) -> List[Dict[str, Any]]:
 
     dishes = extract_json_array(text)
     if dishes is None:
-        logger.warning("Failed to parse dish recognition output: %s", output[:500])
+        logger.warning("Failed to parse dish recognition output as JSON array: %s", text[:500])
+        # Fallback: try to extract dish names from plain text using regex
+        import re
+        fallback = _fallback_parse_dishes(text)
+        if fallback:
+            logger.info("Fallback parsing succeeded: %s", fallback)
+            return fallback
         return []
 
     # Normalize results
@@ -97,8 +113,36 @@ def recognize_dishes(image_path: str) -> List[Dict[str, Any]]:
                 "name": d["name"].strip(),
                 "category": d.get("category", "荤菜").strip(),
             })
+        elif isinstance(d, str) and d.strip():
+            # Handle case where model returns plain string array
+            result.append({
+                "name": d.strip(),
+                "category": "荤菜",
+            })
     logger.info("Dish recognition result: %s", result)
     return result
+
+
+def _fallback_parse_dishes(text: str) -> List[Dict[str, Any]]:
+    """Fallback: try to extract dish names from non-JSON text."""
+    import re
+    # Look for patterns like "红烧肉"、"清炒西兰花" (Chinese dish names in quotes or listed)
+    results = []
+    # Pattern 1: numbered list like "1. 红烧肉" or "1、红烧肉"
+    matches = re.findall(r'\d+[.、)）]\s*(.+?)(?:\n|$)', text)
+    if matches:
+        for m in matches:
+            name = m.strip().rstrip('，。,.')
+            if name and len(name) <= 20:
+                results.append({"name": name, "category": "荤菜"})
+    # Pattern 2: dish names in Chinese quotes
+    if not results:
+        matches = re.findall(r'[""「」『』](.+?)[""「」『』]', text)
+        for m in matches:
+            name = m.strip()
+            if name and len(name) <= 20:
+                results.append({"name": name, "category": "荤菜"})
+    return results
 
 
 def generate_monthly_weekend_plan(

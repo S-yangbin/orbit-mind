@@ -812,6 +812,12 @@ async def recognize_photo(
     # AI recognition
     dishes_raw = recognize_dishes(file_path)
 
+    # Build message for empty results
+    recognize_message = None
+    if not dishes_raw:
+        recognize_message = "AI 未能识别出菜品，请手动添加"
+        logger.info("No dishes recognized from photo: %s", file_path)
+
     # Match with existing dishes
     recognized = []
     for d in dishes_raw:
@@ -834,6 +840,7 @@ async def recognize_photo(
         recognized_dishes=recognized,
         date=target_date,
         meal_type=target_meal,
+        recognize_message=recognize_message,
     )
 
 

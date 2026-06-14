@@ -378,6 +378,7 @@ class PhotoRecognizeResponse(BaseModel):
     recognized_dishes: List[RecognizedDish]
     date: date
     meal_type: str
+    recognize_message: Optional[str] = None
 
 
 class MealLogDishInput(BaseModel):
