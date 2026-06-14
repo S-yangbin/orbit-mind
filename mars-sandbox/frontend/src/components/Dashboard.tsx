@@ -1123,7 +1123,7 @@ export function Dashboard() {
                 border: "none",
                 borderRadius: 8,
               }}
-              sandbox="allow-scripts allow-same-origin allow-forms allow-modals"
+              sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups"
               title={selectedTravelPage.title}
             />
           )}

@@ -68,7 +68,7 @@ export function PagePreview() {
             height: "100%",
             border: "none",
           }}
-          sandbox="allow-scripts allow-same-origin allow-forms allow-modals"
+          sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups"
           title={page.title}
         />
       </div>
