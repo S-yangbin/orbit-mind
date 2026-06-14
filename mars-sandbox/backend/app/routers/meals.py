@@ -28,7 +28,7 @@ from ..schemas import (
     MealLogCreate, MealLogResponse, MealLogListResponse, MealLogDishOutput,
     MealHistoryStatsResponse, DishPreferenceResponse, MemberPreferenceSummary, DishLikedByResponse,
 )
-from ..services.ai_service import recognize_dishes, generate_monthly_weekend_plan
+from ..services.ai_service import recognize_dishes, generate_monthly_weekend_plan, AIGenerationError
 from ..ws.dashboard import broadcast_to_dashboards, _get_meal_plans
 
 logger = logging.getLogger(__name__)
@@ -579,9 +579,13 @@ async def generate_plan(
                 recent_dish_names.add(d["name"])
 
     # Call AI for monthly weekend plan
-    plan_data = generate_monthly_weekend_plan(member_data, list(recent_dish_names), start_date)
+    try:
+        plan_data = generate_monthly_weekend_plan(member_data, list(recent_dish_names), start_date)
+    except AIGenerationError as e:
+        logger.error("AI菜单生成失败: %s", e)
+        raise HTTPException(status_code=502, detail=str(e))
     if not plan_data:
-        raise HTTPException(status_code=502, detail="AI failed to generate plan")
+        raise HTTPException(status_code=502, detail="AI生成菜单返回空结果，请稍后重试")
 
     # Phase 1: Pre-create/find all dishes and commit to get IDs
     all_dishes = {}  # name -> Dish object

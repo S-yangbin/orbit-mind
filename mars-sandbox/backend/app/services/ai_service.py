@@ -4,12 +4,17 @@ import logging
 import os
 import subprocess
 from datetime import date, timedelta
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 
 from ..config import settings
 from ..utils.json_helpers import extract_json_array, extract_json_object
 
 logger = logging.getLogger(__name__)
+
+
+class AIGenerationError(Exception):
+    """Raised when AI generation fails with a specific reason."""
+    pass
 
 # AI 壁纸生成主题模板（随季节自动选择）
 _WALLPAPER_THEMES = [
@@ -24,22 +29,35 @@ _WALLPAPER_THEMES = [
 ]
 
 
-def _run_bl(args: List[str], timeout: int = 120) -> Optional[str]:
-    """Run a bl command and return stdout text, or None on failure."""
+def _run_bl(args: List[str], timeout: int = 120) -> Tuple[Optional[str], str]:
+    """Run a bl command and return (stdout_text, error_message).
+
+    Returns (output, "") on success, (None, error_reason) on failure.
+    """
     cmd = [settings.BL_PATH] + args
     logger.info("Running bl command: %s", " ".join(cmd))
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
         if result.returncode != 0:
+            err = f"bl命令执行失败(rc={result.returncode}): {result.stderr[:300]}"
             logger.error("bl command failed (rc=%d): stderr=%s", result.returncode, result.stderr)
-            return None
-        return result.stdout.strip()
+            return None, err
+        stdout = result.stdout.strip()
+        if not stdout:
+            return None, "bl命令返回空输出"
+        return stdout, ""
     except subprocess.TimeoutExpired:
+        err = f"bl命令超时({timeout}秒)"
         logger.error("bl command timed out after %ds", timeout)
-        return None
+        return None, err
+    except FileNotFoundError:
+        err = f"bl命令未找到(path={settings.BL_PATH})"
+        logger.error("bl command not found at: %s", settings.BL_PATH)
+        return None, err
     except Exception as e:
+        err = f"bl命令异常: {e}"
         logger.error("bl command error: %s", e)
-        return None
+        return None, err
 
 
 def recognize_dishes(image_path: str) -> List[Dict[str, Any]]:
@@ -62,7 +80,7 @@ def recognize_dishes(image_path: str) -> List[Dict[str, Any]]:
         "4. 返回严格的 JSON 数组，不要任何其他文字\n\n"
         '格式示例: [{"name":"红烧肉","category":"荤菜"},{"name":"清炒西兰花","category":"素菜"},{"name":"米饭","category":"主食"}]'
     )
-    output = _run_bl([
+    output, err = _run_bl([
         "omni",
         "--image", image_path,
         "--system", system_prompt,
@@ -72,7 +90,7 @@ def recognize_dishes(image_path: str) -> List[Dict[str, Any]]:
     ], timeout=120)
 
     if not output:
-        logger.warning("Dish recognition returned no output")
+        logger.warning("Dish recognition returned no output: %s", err)
         return []
 
     logger.info("Dish recognition raw output: %s", output[:500])
@@ -253,36 +271,41 @@ def generate_monthly_weekend_plan(
   ]
 }}"""
 
-    output = _run_bl([
+    output, err = _run_bl([
         "text", "chat",
         "--model", "qwen-plus",
         "--message", prompt,
-        "--max-tokens", "4096",
+        "--max-tokens", "8192",
         "--temperature", "0.8",
         "--output", "json",
     ], timeout=180)
 
     if not output:
-        logger.error("Monthly weekend plan generation returned no output")
-        return None
+        raise AIGenerationError(err or "AI命令无输出")
 
     # With --output json, extract text from API response structure
     text = output
+    finish_reason = None
     try:
         resp = json.loads(output)
         if isinstance(resp, dict):
             choices = resp.get("choices", [])
-            if choices and "message" in choices[0]:
-                text = choices[0]["message"].get("content", output)
+            if choices:
+                finish_reason = choices[0].get("finish_reason")
+                if "message" in choices[0]:
+                    text = choices[0]["message"].get("content", output)
             elif "output" in resp and "text" in resp["output"]:
                 text = resp["output"]["text"]
-    except (json.JSONDecodeError, TypeError, IndexError, KeyError):
-        pass
+    except (json.JSONDecodeError, TypeError, IndexError, KeyError) as e:
+        logger.warning("Failed to parse bl API response wrapper: %s", e)
+
+    logger.info("Plan generation finish_reason=%s, text length=%d", finish_reason, len(text))
 
     plan = extract_json_object(text)
     if plan is None or "days" not in plan:
-        logger.error("Failed to parse monthly weekend plan output: %s", text[:300])
-        return None
+        reason = "输出被截断(max-tokens不足)" if finish_reason == "length" else "JSON解析失败"
+        logger.error("Failed to parse monthly weekend plan output (%s): %s", reason, text[:500])
+        raise AIGenerationError(f"AI输出{reason}，请重试")
 
     return plan
 
@@ -320,7 +343,7 @@ def generate_wallpaper(prompt: Optional[str] = None) -> Optional[str]:
     full_prompt = f"高清风景壁纸，{prompt}，专业摄影，超高清画质，色彩丰富，构图优美"
     logger.info("AI 壁纸生成 prompt: %s", full_prompt)
 
-    output = _run_bl([
+    output, err = _run_bl([
         "image", "generate",
         "--prompt", full_prompt,
         "--size", "1920*1080",
@@ -330,7 +353,7 @@ def generate_wallpaper(prompt: Optional[str] = None) -> Optional[str]:
     ], timeout=120)
 
     if not output:
-        logger.error("AI 壁纸生成返回空")
+        logger.error("AI 壁纸生成返回空: %s", err)
         return None
 
     try:

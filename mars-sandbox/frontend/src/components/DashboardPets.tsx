@@ -91,8 +91,11 @@ function pick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
-function randomPos(): { x: number; y: number } {
-  return { x: 5 + Math.random() * 82, y: 58 + Math.random() * 32 };
+function randomPos(kind?: PetKind): { x: number; y: number } {
+  const y = 58 + Math.random() * 32;
+  if (kind === "dog") return { x: 5 + Math.random() * 35, y };
+  if (kind === "cat") return { x: 58 + Math.random() * 35, y };
+  return { x: 5 + Math.random() * 82, y };
 }
 
 function clamp(v: number, lo: number, hi: number) {
@@ -113,7 +116,7 @@ interface BallState {
 const BALL_SIZE = 16;
 const BALL_SPEED = 0.6;
 const BALL_FRICTION = 0.98;
-const PET_CHASE_BALL_DISTANCE = 15;
+const PET_CHASE_BALL_DISTANCE = 50;
 
 /* ───────── 宠物位置 ref（脱离 React） ───────── */
 interface PetPos {
@@ -385,8 +388,8 @@ export function DashboardPets() {
   const [cat, setCat] = useState<PetUI>(() => mkInit("cat"));
 
   // 位置用 ref 管理，避免每帧 setState
-  const dogPos = useRef<PetPos>(randomPos());
-  const catPos = useRef<PetPos>(randomPos());
+  const dogPos = useRef<PetPos>(randomPos("dog"));
+  const catPos = useRef<PetPos>(randomPos("cat"));
 
   const dogElRef = useRef<HTMLDivElement>(null);
   const catElRef = useRef<HTMLDivElement>(null);
@@ -402,17 +405,25 @@ export function DashboardPets() {
   const dogTarget = useRef<{ x: number; y: number } | null>(null);
   const catTarget = useRef<{ x: number; y: number } | null>(null);
 
+  /* ── 领地制：旺财守左，咪咪守右 ── */
+  const DOG_HOME = { x: 20, y: 75 };
+  const CAT_HOME = { x: 78, y: 75 };
+  const TERRITORY_MID = 50; // 分界线
+
   /* ── 球状态（位置用 ref，active 用 state） ── */
   const [ballActive, setBallActive] = useState(false);
   const ballPosRef = useRef({ x: 50, y: 75, vx: 0, vy: 0 });
   const ballElRef = useRef<HTMLDivElement>(null);
 
-  /* ── 是否有活跃动画（控制 rAF 是否运行） ── */
-  const needsAnimation = () => {
+  /* ── 是否有活跃动画（ref 保持最新，避免闭包过期） ── */
+  const needsAnimRef = useRef(false);
+  const startRafRef = useRef<() => void>(() => {});
+
+  const updateNeedsAnimation = () => {
     const dogMoving = dogRef.current.action === "walk" || dogRef.current.action === "run" || dogRef.current.action === "flee";
     const catMoving = catRef.current.action === "walk" || catRef.current.action === "run" || catRef.current.action === "flee";
     const ballMoving = ballActive && (Math.abs(ballPosRef.current.vx) > 0.01 || Math.abs(ballPosRef.current.vy) > 0.01);
-    return dogMoving || catMoving || ballMoving;
+    needsAnimRef.current = dogMoving || catMoving || ballMoving;
   };
 
   /* ── 点击计数衰减 ── */
@@ -432,22 +443,11 @@ export function DashboardPets() {
       timeout = setTimeout(() => {
         updateBehaviorRef.current("dog");
         updateBehaviorRef.current("cat");
-        schedule();
-      }, delay);
-    };
-    schedule();
-    return () => clearTimeout(timeout);
-  }, []);
-
-  /* ── 自言自语（随机间隔） ── */
-  useEffect(() => {
-    const MUMBLE_INTERVAL = 15000;
-    let timeout: ReturnType<typeof setTimeout>;
-    const schedule = () => {
-      const delay = MUMBLE_INTERVAL + Math.random() * 10000;
-      timeout = setTimeout(() => {
-        mumbleRandom("dog");
-        mumbleRandom("cat");
+        // React 状态更新后，检查并启动 rAF
+        setTimeout(() => {
+          updateNeedsAnimation();
+          startRafRef.current();
+        }, 0);
         schedule();
       }, delay);
     };
@@ -465,7 +465,8 @@ export function DashboardPets() {
       if (!running) return;
       frameCount++;
 
-      if (needsAnimation()) {
+      updateNeedsAnimation();
+      if (needsAnimRef.current) {
         moveStepDOM("dog", frameCount);
         moveStepDOM("cat", frameCount);
         updateBallDOM();
@@ -476,26 +477,34 @@ export function DashboardPets() {
       }
     };
 
-    // 定期检查是否需要启动 rAF
-    const checkInterval = setInterval(() => {
-      if (running && needsAnimation() && raf === 0) {
+    const ensureRaf = () => {
+      if (running && raf === 0) {
         raf = requestAnimationFrame(tick);
       }
+    };
+    startRafRef.current = ensureRaf;
+
+    // 定期检查是否需要启动 rAF（兜底机制）
+    const checkInterval = setInterval(() => {
+      updateNeedsAnimation();
+      if (needsAnimRef.current) ensureRaf();
     }, 200);
 
     // 初始启动
-    if (needsAnimation()) {
+    updateNeedsAnimation();
+    if (needsAnimRef.current) {
       raf = requestAnimationFrame(tick);
     }
 
     return () => {
       running = false;
+      startRafRef.current = () => {};
       clearInterval(checkInterval);
       if (raf) cancelAnimationFrame(raf);
     };
   }, [ballActive]);
 
-  /* ── 直接操作 DOM 移动宠物（不调 setState） ── */
+  /* ── 领地内移动（旺财左半，咪咪右半） ── */
   const moveStepDOM = useCallback(
     (kind: PetKind, frameCount: number) => {
       const ref = kind === "dog" ? dogRef : catRef;
@@ -522,7 +531,14 @@ export function DashboardPets() {
         return;
       }
 
-      pos.x = clamp(pos.x + (dx / dist) * speed, 2, 93);
+      // 领地边界：逃跑不受限
+      if (action === "flee") {
+        pos.x = clamp(pos.x + (dx / dist) * speed, 2, 93);
+      } else {
+        const xMin = kind === "dog" ? 3 : TERRITORY_MID + 2;
+        const xMax = kind === "dog" ? TERRITORY_MID - 2 : 93;
+        pos.x = clamp(pos.x + (dx / dist) * speed, xMin, xMax);
+      }
       pos.y = clamp(pos.y + (dy / dist) * speed, 52, 92);
 
       // 直接操作 DOM
@@ -568,7 +584,7 @@ export function DashboardPets() {
     }
   }, [ballActive]);
 
-  /* ── 踢/拍球 ── */
+  /* ── 踢球：朝对方半场踢 ── */
   const kickBall = useCallback((kind: PetKind) => {
     const petRef = kind === "dog" ? dogRef : catRef;
     if (!petRef.current || petRef.current.gone) return;
@@ -581,10 +597,17 @@ export function DashboardPets() {
     const dy = b.y - posRef.current.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
     if (dist < 5) {
-      const angle = Math.atan2(dy, dx);
-      const force = 0.8 + Math.random() * 0.5;
-      b.vx = Math.cos(angle) * force * 1.5;
-      b.vy = Math.sin(angle) * force * 1.5;
+      // 朝对方半场踢
+      const targetX = kind === "dog"
+        ? 55 + Math.random() * 30   // 踢到右边 55~85
+        : 15 + Math.random() * 30;  // 踢到左边 15~45
+      const targetY = 60 + Math.random() * 25;
+      const toDx = targetX - b.x;
+      const toDy = targetY - b.y;
+      const toDist = Math.sqrt(toDx * toDx + toDy * toDy);
+      const force = 0.8 + Math.random() * 0.4;
+      b.vx = (toDx / toDist) * force * 1.5;
+      b.vy = (toDy / toDist) * force * 1.5;
     }
   }, [ballActive]);
 
@@ -603,7 +626,7 @@ export function DashboardPets() {
     if (dog.gone) {
       timers.push(
         setTimeout(() => {
-          const pos = randomPos();
+          const pos = randomPos("dog");
           dogPos.current = pos;
           dogTarget.current = null;
           setDog((p) => ({
@@ -622,7 +645,7 @@ export function DashboardPets() {
     if (cat.gone) {
       timers.push(
         setTimeout(() => {
-          const pos = randomPos();
+          const pos = randomPos("cat");
           catPos.current = pos;
           catTarget.current = null;
           setCat((p) => ({
@@ -641,30 +664,6 @@ export function DashboardPets() {
     return () => timers.forEach(clearTimeout);
   }, [dog.gone, cat.gone]);
 
-  /* ── 自言自语 ── */
-  const mumbleRandom = useCallback(
-    (kind: PetKind) => {
-      const setter = kind === "dog" ? setDog : setCat;
-      const ref = kind === "dog" ? dogRef : catRef;
-      const speeches = SPEECHES[kind];
-
-      if (ref.current.gone) return;
-      if (ref.current.speechVisible) return;
-      if (ref.current.action === "flee") return;
-
-      const r = Math.random();
-      let text = "";
-      if (r < 0.25) text = pick(speeches.idle);
-      else if (r < 0.5) text = pick(speeches.lick);
-      else if (r < 0.75) text = pick(speeches.chase_tail);
-      else text = pick(speeches.sleep);
-
-      setter((p) => ({ ...p, speechBubble: text, speechVisible: true }));
-      setTimeout(() => setter((p) => ({ ...p, speechVisible: false })), 3000);
-    },
-    [],
-  );
-
   /* ── 行为逻辑 ── */
   const updateBehavior = useCallback(
     (kind: PetKind) => {
@@ -681,31 +680,40 @@ export function DashboardPets() {
       if (ballActive) {
         const b = ballPosRef.current;
         const petPos = kind === "dog" ? dogPos.current : catPos.current;
+        // 球在谁那边
+        const ballOnMySide = kind === "dog" ? b.x < TERRITORY_MID : b.x >= TERRITORY_MID;
+        const ballStopped = Math.abs(b.vx) < 0.05 && Math.abs(b.vy) < 0.05;
         const dxb = b.x - petPos.x;
         const dyb = b.y - petPos.y;
         const distBall = Math.sqrt(dxb * dxb + dyb * dyb);
-        if (distBall < PET_CHASE_BALL_DISTANCE) {
+
+        if (ballOnMySide && ballStopped && distBall < PET_CHASE_BALL_DISTANCE) {
+          // 球在我这边且停住了，跑过去捡球踢走
           if (distBall < 4) kickBallRef.current(kind);
           target.current = { x: b.x, y: b.y };
           const pRef = kind === "dog" ? dogPos : catPos;
-          setter((p) => ({ ...p, action: "run", flipX: (target.current?.x ?? pRef.current.x) < pRef.current.x }));
+          setter((p) => ({ ...p, action: "run", flipX: target.current!.x < pRef.current.x }));
           return;
         }
-      }
-
-      if (kind === "dog" && r < 0.15 && !catRef.current.gone) {
-        target.current = { x: catPos.current.x + (Math.random() * 10 - 5), y: catPos.current.y };
-        const posRef2 = kind === "dog" ? dogPos : catPos;
-        setter((p) => ({ ...p, action: "run", flipX: (target.current?.x ?? posRef2.current.x) < posRef2.current.x }));
-        return;
+        // 球不在我这边：回自己家附近待着
+        if (!ballOnMySide && !target.current && distBall > 15) {
+          const home = kind === "dog" ? DOG_HOME : CAT_HOME;
+          const goHomeX = home.x + (Math.random() * 10 - 5);
+          const goHomeY = home.y + (Math.random() * 6 - 3);
+          if (Math.abs(petPos.x - home.x) > 8 || Math.abs(petPos.y - home.y) > 5) {
+            target.current = { x: goHomeX, y: goHomeY };
+            setter((p) => ({ ...p, action: "walk", flipX: goHomeX < petPos.x }));
+            return;
+          }
+        }
       }
 
       const posRef3 = kind === "dog" ? dogPos : catPos;
       if (r < 0.22) {
-        target.current = randomPos();
+        target.current = randomPos(kind);
         setter((p) => ({ ...p, action: "walk", flipX: (target.current?.x ?? posRef3.current.x) < posRef3.current.x }));
       } else if (r < 0.35) {
-        target.current = randomPos();
+        target.current = randomPos(kind);
         setter((p) => ({ ...p, action: "run", flipX: (target.current?.x ?? posRef3.current.x) < posRef3.current.x }));
       } else if (r < 0.5) {
         target.current = null;
@@ -768,6 +776,11 @@ export function DashboardPets() {
         const fleePosRef = kind === "dog" ? dogPos : catPos;
         target.current = { x: fleeX, y: fleePosRef.current.y };
         playSound(kind, "flee");
+        // 立即启动 rAF 让宠物跑掉
+        setTimeout(() => {
+          updateNeedsAnimation();
+          startRafRef.current();
+        }, 0);
         setTimeout(() => {
           setter((p) => ({ ...p, gone: true, speechVisible: false, sweatVisible: false }));
         }, 1600);
@@ -815,9 +828,21 @@ export function DashboardPets() {
       ballPosRef.current.vx = Math.cos(angle) * force * 2;
       ballPosRef.current.vy = Math.sin(angle) * force * 2;
     } else {
-      ballPosRef.current = { x: 50, y: 75, vx: 0, vy: 0 };
+      // 给球初始速度，避免 rAF 检测不到运动
+      const angle = Math.random() * Math.PI * 2;
+      const force = 1.2;
+      ballPosRef.current = {
+        x: 50, y: 75,
+        vx: Math.cos(angle) * force,
+        vy: Math.sin(angle) * force,
+      };
       setBallActive(true);
     }
+    // 立即启动 rAF
+    setTimeout(() => {
+      updateNeedsAnimation();
+      startRafRef.current();
+    }, 0);
   }, [ballActive]);
 
   return (
